@@ -1,6 +1,5 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
-#ifndef AC_POSCONTROL_H
-#define AC_POSCONTROL_H
+#pragma once
 
 #include <AP_Common/AP_Common.h>
 #include <AP_Param/AP_Param.h>
@@ -83,6 +82,13 @@ public:
     ///   only enforced when set_alt_target_from_climb_rate is used
     ///   set to zero to disable limit
     void set_alt_max(float alt) { _alt_max = alt; }
+
+    /// set_alt_min - sets the minimum altitude (maximum depth) in cm
+    ///   only enforced when set_alt_target_from_climb_rate is used
+    ///   set to zero to disable limit
+#if APM_BUILD_TYPE(APM_BUILD_ArduSub)
+    void set_alt_min(float alt) { _alt_min = alt; }
+#endif
 
     /// set_speed_z - sets maximum climb and descent rates
     ///     speed_down can be positive or negative but will always be interpreted as a descent speed
@@ -401,10 +407,12 @@ private:
     Vector3f    _accel_error;           // desired acceleration in cm/s/s  // To-Do: are xy actually required?
     Vector3f    _accel_feedforward;     // feedforward acceleration in cm/s/s
     float       _alt_max;               // max altitude - should be updated from the main code with altitude limit from fence
+#if APM_BUILD_TYPE(APM_BUILD_ArduSub)
+    float		_alt_min;
+#endif
     float       _distance_to_target;    // distance to position target - for reporting only
     LowPassFilterFloat _vel_error_filter;   // low-pass-filter on z-axis velocity error
 
     Vector2f    _accel_target_jerk_limited; // acceleration target jerk limited to 100deg/s/s
     LowPassFilterVector2f _accel_target_filter; // acceleration target filter
 };
-#endif	// AC_POSCONTROL_H

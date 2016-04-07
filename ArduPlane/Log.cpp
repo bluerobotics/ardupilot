@@ -471,7 +471,7 @@ void Plane::Log_Write_Home_And_Origin()
 #if AP_AHRS_NAVEKF_AVAILABLE
     // log ekf origin if set
     Location ekf_orig;
-    if (ahrs.get_NavEKF_const().getOriginLLH(ekf_orig)) {
+    if (ahrs.get_origin(ekf_orig)) {
         DataFlash.Log_Write_Origin(LogOriginType::ekf_origin, ekf_orig);
     }
 #endif
@@ -500,6 +500,8 @@ static const struct LogStructure log_structure[] = {
       "ATRP", "QBBcfff",  "TimeUS,Type,State,Servo,Demanded,Achieved,P" },
     { LOG_STATUS_MSG, sizeof(log_Status),
       "STAT", "QBfBBBBBB",  "TimeUS,isFlying,isFlyProb,Armed,Safety,Crash,Still,Stage,Hit" },
+    { LOG_QTUN_MSG, sizeof(QuadPlane::log_QControl_Tuning),
+      "QTUN", "Qhfffehh", "TimeUS,AngBst,ThrOut,DAlt,Alt,BarAlt,DCRt,CRt" },
 #if OPTFLOW == ENABLED
     { LOG_OPTFLOW_MSG, sizeof(log_Optflow),
       "OF",   "QBffff",   "TimeUS,Qual,flowX,flowY,bodyX,bodyY" },

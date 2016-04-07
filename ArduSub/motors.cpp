@@ -77,7 +77,7 @@ void Sub::auto_disarm_check()
 
     // exit immediately if we are already disarmed, or if auto
     // disarming is disabled
-    if (!motors.armed() || disarm_delay_ms == 0) {
+    if (!motors.armed() || disarm_delay_ms == 0 || control_mode == THROW) {
         auto_disarm_begin = tnow_ms;
         return;
     }
@@ -154,8 +154,10 @@ bool Sub::init_arm_motors(bool arming_from_gcs)
 
     if (ap.home_state == HOME_UNSET) {
         // Reset EKF altitude if home hasn't been set yet (we use EKF altitude as substitute for alt above home)
-        ahrs.resetHeightDatum();
-        Log_Write_Event(DATA_EKF_ALT_RESET);
+        
+        // Always use absolute altitude for ROV
+		// ahrs.resetHeightDatum();
+		// Log_Write_Event(DATA_EKF_ALT_RESET);
     } else if (ap.home_state == HOME_SET_NOT_LOCKED) {
         // Reset home position if it has already been set before (but not locked)
         set_home_to_current_location();

@@ -1,7 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#ifndef _SUB_H
-#define _SUB_H
+#pragma once
 
 #define THISFIRMWARE "ArduSub V3.4-dev"
 #define FIRMWARE_VERSION 3,4,0,FIRMWARE_VERSION_TYPE_DEV
@@ -90,6 +89,7 @@
 #include <AP_Terrain/AP_Terrain.h>
 #include <AP_RPM/AP_RPM.h>
 #include <AC_InputManager/AC_InputManager.h>        // Pilot input handling library
+#include <AP_JSButton/AP_JSButton.h>   // Joystick/gamepad button function assignment
 
 // Configuration
 #include "defines.h"
@@ -240,6 +240,9 @@ private:
             uint8_t using_interlock     : 1; // 20      // aux switch motor interlock function is in use
             uint8_t motor_emergency_stop: 1; // 21      // motor estop switch, shuts off motors when enabled
             uint8_t land_repo_active    : 1; // 22      // true if the pilot is overriding the landing position
+            uint8_t at_bottom			: 1;			// true if we are at the bottom
+            uint8_t at_surface			: 1;			// true if we are at the surface
+            uint8_t depth_sensor_present: 1;			// true if we have an external baro connected
         };
         uint32_t value;
     } ap;
@@ -371,6 +374,12 @@ private:
 
     // Flip
     Vector3f flip_orig_attitude;         // original Sub attitude before flip
+
+    // Throw
+    bool throw_early_exit_interlock = true; // value of the throttle interlock that must be restored when exiting throw mode early
+    bool throw_flight_commenced = false;    // true when the throw has been detected and the motors and control loops are running
+    uint32_t throw_free_fall_start_ms = 0;  // system time free fall was detected
+    float throw_free_fall_start_velz = 0.0f;// vertical velocity when free fall was detected
 
     // Battery Sensors
     AP_BattMonitor battery;
@@ -615,7 +624,6 @@ private:
     void Log_Write_Control_Tuning();
     void Log_Write_Performance();
     void Log_Write_Attitude();
-    void Log_Write_Rate();
     void Log_Write_MotBatt();
     void Log_Write_Startup();
     void Log_Write_Event(uint8_t id);
@@ -763,6 +771,14 @@ private:
     void poshold_roll_controller_to_pilot_override();
     void poshold_pitch_controller_to_pilot_override();
 
+    // Throw to launch functionality
+    bool throw_init(bool ignore_checks);
+    void throw_exit();
+    void throw_run();
+    bool throw_detected();
+    bool throw_attitude_good();
+    bool throw_height_good();
+
     bool rtl_init(bool ignore_checks);
     void rtl_run();
     void rtl_climb_start();
@@ -817,6 +833,9 @@ private:
     void update_land_and_crash_detectors();
     void update_land_detector();
     void update_throttle_thr_mix();
+    void update_surface_and_bottom_detector();
+    void set_surfaced(bool at_surface);
+    void set_bottomed(bool at_bottom);
 #if GNDEFFECT_COMPENSATION == ENABLED
     void update_ground_effect_detector(void);
 #endif // GNDEFFECT_COMPENSATION == ENABLED
@@ -865,6 +884,8 @@ private:
     void enable_motor_output();
     void read_radio();
     void transform_manual_control_to_rc_override(int16_t x, int16_t y, int16_t z, int16_t r, uint16_t buttons);
+    void handle_jsbutton_press(uint8_t button,bool shift=false);
+    JSButton* get_button(uint8_t index);
     void set_throttle_and_failsafe(uint16_t throttle_pwm);
     void set_throttle_zero_flag(int16_t throttle_control);
     void init_barometer(bool full_calibration);
@@ -1007,5 +1028,3 @@ extern Sub sub;
 
 using AP_HAL::millis;
 using AP_HAL::micros;
-
-#endif // _SUB_H_

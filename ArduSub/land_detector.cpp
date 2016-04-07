@@ -24,11 +24,11 @@ void Sub::update_land_and_crash_detectors()
 // called at MAIN_LOOP_RATE
 void Sub::update_land_detector()
 {
-	if(barometer.num_instances() > 1 && barometer.get_altitude() > LAND_END_DEPTH && ap.throttle_zero) {
-		set_land_complete(true);
-	} else {
+//	if(barometer.num_instances() > 1 && barometer.get_altitude() > LAND_END_DEPTH && ap.throttle_zero) {
+//		set_land_complete(true);
+//	} else {
 		set_land_complete(false);
-	}
+//	}
 }
 
 void Sub::set_land_complete(bool b)
@@ -52,42 +52,5 @@ void Sub::set_land_complete(bool b)
 //  has no effect when throttle is above hover throttle
 void Sub::update_throttle_thr_mix()
 {
-    // if disarmed or landed prioritise throttle
-    if(!motors.armed() || ap.land_complete) {
-        motors.set_throttle_mix_min();
-        return;
-    }
-
-    if (mode_has_manual_throttle(control_mode)) {
-        // manual throttle
-        if(channel_throttle->control_in <= 0) {
-            motors.set_throttle_mix_min();
-        } else {
-            motors.set_throttle_mix_mid();
-        }
-    } else {
-        // autopilot controlled throttle
-
-        // check for aggressive flight requests - requested roll or pitch angle below 15 degrees
-        const Vector3f angle_target = attitude_control.get_att_target_euler_cd();
-        bool large_angle_request = (pythagorous2(angle_target.x, angle_target.y) > 1500.0f);
-
-        // check for large external disturbance - angle error over 30 degrees
-        const Vector3f angle_error = attitude_control.get_att_error_rot_vec_cd();
-        bool large_angle_error = (pythagorous2(angle_error.x, angle_error.y) > 3000.0f);
-
-        // check for large acceleration - falling or high turbulence
-        Vector3f accel_ef = ahrs.get_accel_ef_blended();
-        accel_ef.z += GRAVITY_MSS;
-        bool accel_moving = (accel_ef.length() > 3.0f);
-
-        // check for requested decent
-        bool descent_not_demanded = pos_control.get_desired_velocity().z >= 0.0f;
-
-        if ( large_angle_request || large_angle_error || accel_moving || descent_not_demanded) {
-            motors.set_throttle_mix_max();
-        } else {
-            motors.set_throttle_mix_min();
-        }
-    }
+	return; // placeholder, was used by heli only
 }

@@ -105,7 +105,7 @@ const AP_Scheduler::Task Sub::scheduler_tasks[] = {
     SCHED_TASK(arm_motors_check,      10,     50),
     SCHED_TASK(auto_disarm_check,     10,     50),
     SCHED_TASK(auto_trim,             10,     75),
-    SCHED_TASK(update_altitude,       10,    140),
+    SCHED_TASK(update_altitude,       25,    140),
     SCHED_TASK(run_nav_updates,       50,    100),
     SCHED_TASK(update_thr_average,   100,     90),
     SCHED_TASK(three_hz_loop,          3,     75),
@@ -275,6 +275,9 @@ void Sub::fast_loop()
     // check if we've landed or crashed
     update_land_and_crash_detectors();
 
+    // check if we've reached the surface or bottom
+    update_surface_and_bottom_detector();
+
     // camera mount's fast update
     camera_mount.update_fast();
 
@@ -362,7 +365,7 @@ void Sub::ten_hz_logging_loop()
     // log attitude data if we're not already logging at the higher rate
     if (should_log(MASK_LOG_ATTITUDE_MED) && !should_log(MASK_LOG_ATTITUDE_FAST)) {
         Log_Write_Attitude();
-        Log_Write_Rate();
+        DataFlash.Log_Write_Rate(ahrs, motors, attitude_control, pos_control);
         if (should_log(MASK_LOG_PID)) {
             DataFlash.Log_Write_PID(LOG_PIDR_MSG, g.pid_rate_roll.get_pid_info() );
             DataFlash.Log_Write_PID(LOG_PIDP_MSG, g.pid_rate_pitch.get_pid_info() );
@@ -402,7 +405,7 @@ void Sub::fifty_hz_logging_loop()
 #if HIL_MODE == HIL_MODE_DISABLED
     if (should_log(MASK_LOG_ATTITUDE_FAST)) {
         Log_Write_Attitude();
-        Log_Write_Rate();
+        DataFlash.Log_Write_Rate(ahrs, motors, attitude_control, pos_control);
         if (should_log(MASK_LOG_PID)) {
             DataFlash.Log_Write_PID(LOG_PIDR_MSG, g.pid_rate_roll.get_pid_info() );
             DataFlash.Log_Write_PID(LOG_PIDP_MSG, g.pid_rate_pitch.get_pid_info() );

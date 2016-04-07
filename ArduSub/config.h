@@ -1,7 +1,7 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 //
-#ifndef __ARDUCOPTER_CONFIG_H__
-#define __ARDUCOPTER_CONFIG_H__
+#pragma once
+
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -76,6 +76,9 @@
  # define FRAME_CONFIG_STRING "UNKNOWN"
 #endif
 
+#ifndef SURFACE_DEPTH_DEFAULT
+ # define SURFACE_DEPTH_DEFAULT -10.0 // pressure sensor reading 10cm depth means craft is considered surfaced
+#endif
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -705,5 +708,3 @@
 #else
 #define FIRMWARE_STRING THISFIRMWARE " (" GIT_VERSION ")"
 #endif
-
-#endif // __ARDUCOPTER_CONFIG_H__
