@@ -21,6 +21,19 @@
 #include <AP_Notify/AP_Notify.h>
 #include <GCS_MAVLink/GCS.h>
 
+#include "AP_GPS_ERB.h"
+#include "AP_GPS_GSOF.h"
+#include "AP_GPS_MTK.h"
+#include "AP_GPS_MTK19.h"
+#include "AP_GPS_NMEA.h"
+#include "AP_GPS_PX4.h"
+#include "AP_GPS_QURT.h"
+#include "AP_GPS_SBF.h"
+#include "AP_GPS_SBP.h"
+#include "AP_GPS_SIRF.h"
+#include "AP_GPS_UBLOX.h"
+#include "GPS_Backend.h"
+
 extern const AP_HAL::HAL &hal;
 
 // table of user settable parameters
@@ -607,6 +620,16 @@ AP_GPS::first_unconfigured_gps(void) const
         }
     }
     return GPS_ALL_CONFIGURED;
+}
+
+void
+AP_GPS::broadcast_first_configuration_failure_reason(void) const {
+    uint8_t unconfigured = first_unconfigured_gps();
+    if (drivers[unconfigured] == NULL) {
+        GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_INFO, "GPS %d: was not found", unconfigured + 1);
+    } else {
+        drivers[unconfigured]->broadcast_configuration_failure_reason();
+    }
 }
 
 void

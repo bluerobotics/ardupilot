@@ -26,21 +26,17 @@ extern const AP_HAL::HAL& hal;
 
 // Constructor
 AP_Motors::AP_Motors(uint16_t loop_rate, uint16_t speed_hz) :
-    _roll_control_input(0.0f),
-    _pitch_control_input(0.0f),
-    _throttle_control_input(0.0f),
-    _yaw_control_input(0.0f),
-    _throttle_pwm_scalar(1.0f),
-    _rpy_pwm_scalar(0.074f),
     _loop_rate(loop_rate),
     _speed_hz(speed_hz),
-    _throttle_radio_min(1100),
-    _throttle_radio_max(1900),
+    _roll_in(0.0f),
+    _pitch_in(0.0f),
+    _yaw_in(0.0f),
     _throttle_in(0.0f),
     _throttle_filter(),
     _batt_voltage(0.0f),
     _batt_current(0.0f),
-    _air_density_ratio(1.0f)
+    _air_density_ratio(1.0f),
+    _motor_map_mask(0)
 {
     // init other flags
     _flags.armed = false;
@@ -65,6 +61,15 @@ void AP_Motors::armed(bool arm)
     AP_Notify::flags.armed = arm;
 };
 
+// pilot input in the -1 ~ +1 range for roll, pitch and yaw. 0~1 range for throttle
+void AP_Motors::set_radio_passthrough(float roll_input, float pitch_input, float throttle_input, float yaw_input)
+{
+    _roll_radio_passthrough = roll_input;
+    _pitch_radio_passthrough = pitch_input;
+    _throttle_radio_passthrough = throttle_input;
+    _yaw_radio_passthrough = yaw_input;
+}
+
 /*
   write to an output channel
  */
@@ -73,6 +78,20 @@ void AP_Motors::rc_write(uint8_t chan, uint16_t pwm)
     if (_motor_map_mask & (1U<<chan)) {
         // we have a mapped motor number for this channel
         chan = _motor_map[chan];
+    }
+    if (_pwm_type == PWM_TYPE_ONESHOT125) {
+        // OneShot125 uses a PWM range from 125 to 250 usec
+        pwm /= 8;
+        /*
+          OneShot125 ESCs can be confused by pulses below 125 or above
+          250, making them fail the pulse type auto-detection. This
+          happens at least with BLHeli
+        */
+        if (pwm < 125) {
+            pwm = 125;
+        } else if (pwm > 250) {
+            pwm = 250;
+        }
     }
     hal.rcout->write(chan, pwm);
 }
@@ -83,6 +102,11 @@ void AP_Motors::rc_write(uint8_t chan, uint16_t pwm)
 void AP_Motors::rc_set_freq(uint32_t mask, uint16_t freq_hz)
 {
     hal.rcout->set_freq(rc_map_mask(mask), freq_hz);
+    if (_pwm_type == PWM_TYPE_ONESHOT ||
+        _pwm_type == PWM_TYPE_ONESHOT125) {
+        // tell HAL to do immediate output
+        hal.rcout->set_output_mode(AP_HAL::RCOutput::MODE_PWM_ONESHOT);
+    }
 }
 
 void AP_Motors::rc_enable_ch(uint8_t chan)
@@ -112,4 +136,40 @@ uint32_t AP_Motors::rc_map_mask(uint32_t mask) const
         }
     }
     return mask2;
+}
+
+// convert input in -1 to +1 range to pwm output
+int16_t AP_Motors::calc_pwm_output_1to1(float input, const RC_Channel& servo)
+{
+    int16_t ret;
+
+    input = constrain_float(input, -1.0f, 1.0f);
+
+    if (servo.get_reverse()) {
+        input = -input;
+    }
+
+    if (input >= 0.0f) {
+        ret = ((input * (servo.radio_max - servo.radio_trim)) + servo.radio_trim);
+    } else {
+        ret = ((input * (servo.radio_trim - servo.radio_min)) + servo.radio_trim);
+    }
+
+    return constrain_int16(ret, servo.radio_min, servo.radio_max);
+}
+
+// convert input in 0 to +1 range to pwm output
+int16_t AP_Motors::calc_pwm_output_0to1(float input, const RC_Channel& servo)
+{
+    int16_t ret;
+
+    input = constrain_float(input, 0.0f, 1.0f);
+
+    if (servo.get_reverse()) {
+        input = 1.0f-input;
+    }
+
+    ret = input * (servo.radio_max - servo.radio_min) + servo.radio_min;
+
+    return constrain_int16(ret, servo.radio_min, servo.radio_max);
 }

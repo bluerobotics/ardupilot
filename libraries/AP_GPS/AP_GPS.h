@@ -344,6 +344,7 @@ public:
 
     // Returns the index of the first unconfigured GPS (returns GPS_ALL_CONFIGURED if all instances report as being configured)
     uint8_t first_unconfigured_gps(void) const;
+    void broadcast_first_configuration_failure_reason(void) const;
 
 private:
     struct GPS_timing {
@@ -396,16 +397,3 @@ private:
 };
 
 #define GPS_BAUD_TIME_MS 1200
-
-#include "GPS_Backend.h"
-#include "AP_GPS_UBLOX.h"
-#include "AP_GPS_MTK.h"
-#include "AP_GPS_MTK19.h"
-#include "AP_GPS_NMEA.h"
-#include "AP_GPS_SIRF.h"
-#include "AP_GPS_SBP.h"
-#include "AP_GPS_PX4.h"
-#include "AP_GPS_QURT.h"
-#include "AP_GPS_SBF.h"
-#include "AP_GPS_GSOF.h"
-#include "AP_GPS_ERB.h"

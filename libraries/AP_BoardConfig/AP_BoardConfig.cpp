@@ -33,7 +33,10 @@
 #ifdef CONFIG_ARCH_BOARD_PX4FMU_V1
 #define BOARD_PWM_COUNT_DEFAULT 2
 #define BOARD_SER1_RTSCTS_DEFAULT 0 // no flow control on UART5 on FMUv1
-#else
+#elif CONFIG_ARCH_BOARD_PX4FMU_V4
+#define BOARD_PWM_COUNT_DEFAULT 6
+#define BOARD_SER1_RTSCTS_DEFAULT 2
+#else // V2
 #define BOARD_PWM_COUNT_DEFAULT 4
 #define BOARD_SER1_RTSCTS_DEFAULT 2
 #endif
@@ -47,9 +50,9 @@ extern const AP_HAL::HAL& hal;
 const AP_Param::GroupInfo AP_BoardConfig::var_info[] = {
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
     // @Param: PWM_COUNT
-    // @DisplayName: PWM Count
-    // @Description: Number of auxillary PWMs to enable. On PX4v1 only 0 or 2 is valid. On Pixhawk 0, 2, 4 or 6 is valid.
-    // @Values: 0:No PWMs,2:Two PWMs,4:Four PWMs,6:Six PWMs
+    // @DisplayName: Auxillary pin config
+    // @Description: Control assigning of FMU pins to PWM output, timer capture and GPIO. All unassigned pins can be used for GPIO
+    // @Values: 0:No PWMs,2:Two PWMs,4:Four PWMs,6:Six PWMs,7:Three PWMs and One Capture
     AP_GROUPINFO("PWM_COUNT",    0, AP_BoardConfig, _pwm_count, BOARD_PWM_COUNT_DEFAULT),
 
     // @Param: SER1_RTSCTS
@@ -111,22 +114,42 @@ void AP_BoardConfig::init()
 {
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
     /* configurre the FMU driver for the right number of PWMs */
-
-    // ensure only valid values are set, rounding up
-    if (_pwm_count > 6) _pwm_count.set(6);
-    if (_pwm_count < 0) _pwm_count.set(0);
-    if (_pwm_count == 1) _pwm_count.set(2);
-    if (_pwm_count == 3) _pwm_count.set(4);
-    if (_pwm_count == 5) _pwm_count.set(6);
-
-    int fd = open("/dev/px4fmu", 0);
-    if (fd == -1) {
-        AP_HAL::panic("Unable to open /dev/px4fmu");
+    static const struct {
+        uint8_t mode_parm;
+        uint8_t mode_value;
+        uint8_t num_gpios;
+    } mode_table[] = {
+        /* table mapping BRD_PWM_COUNT to ioctl arguments */
+        { 0, PWM_SERVO_MODE_NONE, 6 },
+        { 2, PWM_SERVO_MODE_2PWM, 4 },
+        { 4, PWM_SERVO_MODE_4PWM, 2 },
+        { 6, PWM_SERVO_MODE_6PWM, 0 },
+        { 7, PWM_SERVO_MODE_3PWM1CAP, 2 },
+    };
+    uint8_t mode_parm = (uint8_t)_pwm_count.get();
+    uint8_t i;
+    for (i=0; i<ARRAY_SIZE(mode_table); i++) {
+        if (mode_table[i].mode_parm == mode_parm) {
+            break;
+        }
     }
-    if (ioctl(fd, PWM_SERVO_SET_COUNT, _pwm_count.get()) != 0) {
-        hal.console->printf("RCOutput: Unable to setup alt PWM to %u channels\n", _pwm_count.get());  
-    }   
-    close(fd);
+    if (i == ARRAY_SIZE(mode_table)) {
+        hal.console->printf("RCOutput: invalid BRD_PWM_COUNT %u\n", mode_parm); 
+    } else {
+        int fd = open("/dev/px4fmu", 0);
+        if (fd == -1) {
+            AP_HAL::panic("Unable to open /dev/px4fmu");
+        }
+        if (ioctl(fd, PWM_SERVO_SET_MODE, mode_table[i].mode_value) != 0) {
+            hal.console->printf("RCOutput: unable to setup AUX PWM with BRD_PWM_COUNT %u\n", mode_parm);
+        }   
+        close(fd);
+        if (mode_table[i].num_gpios < 2) {
+            // reduce change of config mistake where relay and PWM interfere
+            AP_Param::set_default_by_name("RELAY_PIN", -1);
+            AP_Param::set_default_by_name("RELAY_PIN2", -1);
+        }
+    }
 
     hal.uartC->set_flow_control((AP_HAL::UARTDriver::flow_control)_ser1_rtscts.get());
     if (hal.uartD != NULL) {
@@ -138,38 +161,26 @@ void AP_BoardConfig::init()
     }
 
     if (_sbus_out_rate.get() >= 1) {
-        fd = open("/dev/px4io", 0);
-        if (fd == -1) {
-            hal.console->printf("SBUS: Unable to open px4io for sbus\n");
-        } else {
-            static const struct {
-                uint8_t value;
-                uint16_t rate;
-            } rates[] = {
-                { 1, 50 },
-                { 2, 75 },
-                { 3, 100 },
-                { 4, 150 },
-                { 5, 200 },
-                { 6, 250 },
-                { 7, 300 }
-            };
-            uint16_t rate = 300;
-            for (uint8_t i=0; i<ARRAY_SIZE(rates); i++) {
-                if (rates[i].value == _sbus_out_rate) {
-                    rate = rates[i].rate;
-                }
+        static const struct {
+            uint8_t value;
+            uint16_t rate;
+        } rates[] = {
+            { 1, 50 },
+            { 2, 75 },
+            { 3, 100 },
+            { 4, 150 },
+            { 5, 200 },
+            { 6, 250 },
+            { 7, 300 }
+        };
+        uint16_t rate = 300;
+        for (i=0; i<ARRAY_SIZE(rates); i++) {
+            if (rates[i].value == _sbus_out_rate) {
+                rate = rates[i].rate;
             }
-            for (uint8_t tries=0; tries<10; tries++) {
-                if (ioctl(fd, SBUS_SET_PROTO_VERSION, 1) != 0) {
-                    continue;
-                }
-                if (ioctl(fd, PWM_SERVO_SET_SBUS_RATE, rate) != 0) {
-                    continue;
-                }
-                break;
-            }
-            close(fd);
+        }
+        if (!hal.rcout->enable_sbus_out(rate)) {
+            hal.console->printf("Failed to enable SBUS out\n");
         }
     }
 
@@ -191,13 +202,15 @@ void AP_BoardConfig::init()
         if (ret != 0) {
             hal.console->printf("UAVCAN: failed to start servers\n");
         } else {
-            fd = open("/dev/uavcan/esc", 0); // design flaw of uavcan driver, this should be /dev/uavcan/node one day
+            uint32_t start_wait_ms = AP_HAL::millis();
+            int fd = open("/dev/uavcan/esc", 0); // design flaw of uavcan driver, this should be /dev/uavcan/node one day
             if (fd == -1) {
                 AP_HAL::panic("Configuration invalid - unable to open /dev/uavcan/esc");
             }
 
             // delay startup, UAVCAN still discovering nodes
-            while (ioctl(fd, UAVCAN_IOCG_NODEID_INPROGRESS,0) == OK) {
+            while (ioctl(fd, UAVCAN_IOCG_NODEID_INPROGRESS,0) == OK &&
+                   AP_HAL::millis() - start_wait_ms < 7000) {
                 hal.scheduler->delay(500);
             }
             hal.console->printf("UAVCAN: node discovery complete\n");

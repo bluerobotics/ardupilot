@@ -107,4 +107,18 @@ public:
       will be used to convert channel writes into a percentage
      */
     virtual void     set_esc_scaling(uint16_t min_pwm, uint16_t max_pwm) {}
+
+    /*
+      enable SBUS out at the given rate
+     */
+    virtual bool     enable_sbus_out(uint16_t rate_gz) { return false; }
+    
+    /*
+      output modes. Allows for support of oneshot
+     */
+    enum output_mode {
+        MODE_PWM_NORMAL,
+        MODE_PWM_ONESHOT
+    };
+    virtual void    set_output_mode(enum output_mode mode) {}
 };

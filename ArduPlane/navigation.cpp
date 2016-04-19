@@ -84,7 +84,7 @@ void Plane::navigate()
 
 void Plane::calc_airspeed_errors()
 {
-    float aspeed_cm = airspeed.get_airspeed_cm();
+    float airspeed_measured_cm = airspeed.get_airspeed_cm();
 
     // Normal airspeed target
     target_airspeed_cm = g.airspeed_cruise_cm;
@@ -102,7 +102,7 @@ void Plane::calc_airspeed_errors()
     // but only when this is faster than the target airspeed commanded
     // above.
     if (control_mode >= FLY_BY_WIRE_B && (g.min_gndspeed_cm > 0)) {
-        int32_t min_gnd_target_airspeed = aspeed_cm + groundspeed_undershoot;
+        int32_t min_gnd_target_airspeed = airspeed_measured_cm + groundspeed_undershoot;
         if (min_gnd_target_airspeed > target_airspeed_cm)
             target_airspeed_cm = min_gnd_target_airspeed;
     }
@@ -118,7 +118,7 @@ void Plane::calc_airspeed_errors()
 
     // use the TECS view of the target airspeed for reporting, to take
     // account of the landing speed
-    airspeed_error_cm = SpdHgt_Controller->get_target_airspeed()*100 - aspeed_cm;
+    airspeed_error_cm = SpdHgt_Controller->get_target_airspeed()*100 - airspeed_measured_cm;
 }
 
 void Plane::calc_gndspeed_undershoot()
@@ -139,8 +139,12 @@ void Plane::update_loiter(uint16_t radius)
 {
     if (radius <= 1) {
         // if radius is <=1 then use the general loiter radius. if it's small, use default
-        radius = (abs(g.loiter_radius <= 1)) ? LOITER_RADIUS_DEFAULT : abs(g.loiter_radius);
-        loiter.direction = (g.loiter_radius < 0) ? -1 : 1;
+        radius = (abs(g.loiter_radius) <= 1) ? LOITER_RADIUS_DEFAULT : abs(g.loiter_radius);
+        if (next_WP_loc.flags.loiter_ccw == 1) {
+            loiter.direction = -1;
+        } else {
+            loiter.direction = (g.loiter_radius < 0) ? -1 : 1;
+        }
     }
 
     if (loiter.start_time_ms == 0 &&

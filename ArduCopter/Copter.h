@@ -26,7 +26,7 @@
 // Header includes
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <math.h>
+#include <cmath>
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -246,7 +246,11 @@ private:
 
     // This is the state of the flight control system
     // There are multiple states defined such as STABILIZE, ACRO,
-    int8_t control_mode;
+    control_mode_t control_mode;
+    mode_reason_t control_mode_reason = MODE_REASON_UNKNOWN;
+
+    control_mode_t prev_control_mode;
+    mode_reason_t prev_control_mode_reason = MODE_REASON_UNKNOWN;
 
     // Structure used to detect changes in the flight mode control switch
     struct {
@@ -545,8 +549,6 @@ private:
     // governor.  Even a single "off" frame can cause the rotor to slow dramatically and take a long time to restart.
     ModeFilterInt16_Size5 rotor_speed_deglitch_filter {4};
 
-    int16_t rsc_control_deglitched;
-
     // Tradheli flags
     struct {
         uint8_t dynamic_flight          : 1;    // 0   // true if we are moving at a significant speed (used to turn on/off leaky I terms)
@@ -610,13 +612,13 @@ private:
     float get_look_ahead_yaw();
     void update_thr_average();
     void set_throttle_takeoff();
-    int16_t get_pilot_desired_throttle(int16_t throttle_control);
+    float get_pilot_desired_throttle(int16_t throttle_control);
     float get_pilot_desired_climb_rate(float throttle_control);
     float get_non_takeoff_throttle();
     float get_takeoff_trigger_throttle();
     float get_throttle_pre_takeoff(float input_thr);
     float get_surface_tracking_climb_rate(int16_t target_rate, float current_alt_target, float dt);
-    void set_accel_throttle_I_from_pilot_throttle(int16_t pilot_throttle);
+    void set_accel_throttle_I_from_pilot_throttle(float pilot_throttle);
     void update_poscon_alt_max();
     void rotate_body_frame_to_NE(float &x, float &y);
     void gcs_send_heartbeat(void);
@@ -674,6 +676,7 @@ private:
     void Log_Read(uint16_t log_num, uint16_t start_page, uint16_t end_page);
     void start_logging() ;
     void load_parameters(void);
+    void convert_pid_parameters(void);
     void userhook_init();
     void userhook_FastLoop();
     void userhook_50Hz();
@@ -762,7 +765,7 @@ private:
     void circle_run();
     bool drift_init(bool ignore_checks);
     void drift_run();
-    int16_t get_throttle_assist(float velz, int16_t pilot_throttle_scaled);
+    float get_throttle_assist(float velz, float pilot_throttle_scaled);
     bool flip_init(bool ignore_checks);
     void flip_run();
     bool guided_init(bool ignore_checks);
@@ -791,7 +794,7 @@ private:
     void land_nogps_run();
     float get_land_descent_speed();
     void land_do_not_use_GPS();
-    void set_mode_land_with_pause();
+    void set_mode_land_with_pause(mode_reason_t reason);
     bool landing_with_GPS();
     bool loiter_init(bool ignore_checks);
     void loiter_run();
@@ -847,25 +850,25 @@ private:
     void failsafe_battery_event(void);
     void failsafe_gcs_check();
     void failsafe_gcs_off_event(void);
-    void set_mode_RTL_or_land_with_pause();
+    void set_mode_RTL_or_land_with_pause(mode_reason_t reason);
     void update_events();
     void failsafe_enable();
     void failsafe_disable();
     void fence_check();
     void fence_send_mavlink_status(mavlink_channel_t chan);
-    bool set_mode(uint8_t mode);
+    bool set_mode(control_mode_t mode, mode_reason_t reason);
+    bool gcs_set_mode(uint8_t mode) { return set_mode((control_mode_t)mode, MODE_REASON_GCS_COMMAND); }
     void update_flight_mode();
-    void exit_mode(uint8_t old_control_mode, uint8_t new_control_mode);
-    bool mode_requires_GPS(uint8_t mode);
-    bool mode_has_manual_throttle(uint8_t mode);
-    bool mode_allows_arming(uint8_t mode, bool arming_from_gcs);
-    void notify_flight_mode(uint8_t mode);
+    void exit_mode(control_mode_t old_control_mode, control_mode_t new_control_mode);
+    bool mode_requires_GPS(control_mode_t mode);
+    bool mode_has_manual_throttle(control_mode_t mode);
+    bool mode_allows_arming(control_mode_t mode, bool arming_from_gcs);
+    void notify_flight_mode(control_mode_t mode);
     void heli_init();
     void check_dynamic_flight(void);
     void update_heli_control_dynamics(void);
     void heli_update_landing_swash();
     void heli_update_rotor_speed_targets();
-    void heli_radio_passthrough();
     bool heli_acro_init(bool ignore_checks);
     void heli_acro_run();
     bool heli_stabilize_init(bool ignore_checks);
@@ -925,6 +928,7 @@ private:
     void read_radio();
     void set_throttle_and_failsafe(uint16_t throttle_pwm);
     void set_throttle_zero_flag(int16_t throttle_control);
+    void radio_passthrough_to_motors();
     void init_barometer(bool full_calibration);
     void read_barometer(void);
     void init_sonar(void);

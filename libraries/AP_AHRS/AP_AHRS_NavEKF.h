@@ -37,6 +37,15 @@
 #define AP_AHRS_NAVEKF_AVAILABLE 1
 #define AP_AHRS_NAVEKF_SETTLE_TIME_MS 20000     // time in milliseconds the ekf needs to settle after being started
 
+/*
+  we are too close to running out of flash on px4 with plane firmware, so disable it
+ */
+#if APM_BUILD_TYPE(APM_BUILD_ArduPlane) && CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#define AP_AHRS_WITH_EKF1 0
+#else
+#define AP_AHRS_WITH_EKF1 1
+#endif
+
 class AP_AHRS_NavEKF : public AP_AHRS_DCM
 {
 public:
@@ -206,9 +215,13 @@ public:
     void setTakeoffExpected(bool val);
     void setTouchdownExpected(bool val);
 
+    bool getGpsGlitchStatus();
+
 private:
     enum EKF_TYPE {EKF_TYPE_NONE=0,
+#if AP_AHRS_WITH_EKF1
                    EKF_TYPE1=1,
+#endif
                    EKF_TYPE2=2
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
                    ,EKF_TYPE_SITL=10

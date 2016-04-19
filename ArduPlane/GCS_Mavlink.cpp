@@ -515,7 +515,7 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
     const DataFlash_Class::PID_Info *pid_info;
     if (g.gcs_pid_mask & 1) {
         if (quadplane.in_vtol_mode()) {
-            pid_info = &quadplane.pid_rate_roll.get_pid_info();
+            pid_info = &quadplane.attitude_control->get_rate_roll_pid().get_pid_info();
         } else {
             pid_info = &rollController.get_pid_info();
         }
@@ -532,7 +532,7 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
     }
     if (g.gcs_pid_mask & 2) {
         if (quadplane.in_vtol_mode()) {
-            pid_info = &quadplane.pid_rate_pitch.get_pid_info();
+            pid_info = &quadplane.attitude_control->get_rate_pitch_pid().get_pid_info();
         } else {
             pid_info = &pitchController.get_pid_info();
         }
@@ -549,7 +549,7 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
     }
     if (g.gcs_pid_mask & 4) {
         if (quadplane.in_vtol_mode()) {
-            pid_info = &quadplane.pid_rate_yaw.get_pid_info();
+            pid_info = &quadplane.attitude_control->get_rate_yaw_pid().get_pid_info();
         } else {
             pid_info = &yawController.get_pid_info();
         }
@@ -1143,6 +1143,82 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
     case MAVLINK_MSG_ID_REQUEST_DATA_STREAM:
     {
         handle_request_data_stream(msg, true);
+        break;
+    }
+
+    case MAVLINK_MSG_ID_COMMAND_INT:
+    {
+        // decode
+        mavlink_command_int_t packet;
+        mavlink_msg_command_int_decode(msg, &packet);
+
+        uint8_t result = MAV_RESULT_UNSUPPORTED;
+
+        switch(packet.command) {
+
+        case MAV_CMD_DO_REPOSITION:
+            Location requested_position {};
+            requested_position.lat = packet.x;
+            requested_position.lng = packet.y;
+
+            // check the floating representation for overflow of altitude
+            if (abs(packet.z * 100.0f) >= 0x7fffff) {
+                result = MAV_RESULT_FAILED;
+                break;
+            }
+            requested_position.alt = (int32_t)(packet.z * 100.0f);
+
+            // load option flags
+            if (packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
+                requested_position.flags.relative_alt = 1;
+            }
+            else if (packet.frame == MAV_FRAME_GLOBAL_TERRAIN_ALT_INT) {
+                requested_position.flags.terrain_alt = 1;
+            }
+            else if (packet.frame != MAV_FRAME_GLOBAL_INT) {
+                // not a supported frame
+                break;
+            }
+
+            if (is_zero(packet.param4)) {
+                requested_position.flags.loiter_ccw = 0;
+            } else {
+                requested_position.flags.loiter_ccw = 1;
+            }
+
+            if (location_sanitize(plane.current_loc, requested_position)) {
+                // if the location wasn't already sane don't load it
+                result = MAV_RESULT_FAILED; // failed as the location is not valid
+                break;
+            }
+
+            // location is valid load and set
+            if (((int32_t)packet.param2 & MAV_DO_REPOSITION_FLAGS_CHANGE_MODE) ||
+                (plane.control_mode == GUIDED)) {
+                plane.set_mode(GUIDED);
+                plane.guided_WP_loc = requested_position;
+
+                // add home alt if needed
+                if (plane.guided_WP_loc.flags.relative_alt) {
+                    plane.guided_WP_loc.alt += plane.home.alt;
+                    plane.guided_WP_loc.flags.relative_alt = 0;
+                }
+
+                plane.set_guided_WP();
+
+                result = MAV_RESULT_ACCEPTED;
+            } else {
+                result = MAV_RESULT_FAILED; // failed as we are not in guided
+            }
+            break;
+        }
+
+        mavlink_msg_command_ack_send_buf(
+            msg,
+            chan,
+            packet.command,
+            result);
+
         break;
     }
 
@@ -1938,7 +2014,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         Location new_home_loc {};
         new_home_loc.lat = packet.latitude;
         new_home_loc.lng = packet.longitude;
-        new_home_loc.alt = packet.altitude * 100;
+        new_home_loc.alt = packet.altitude / 10;
         plane.ahrs.set_home(new_home_loc);
         plane.home_is_set = HOME_SET_NOT_LOCKED;
         plane.Log_Write_Home_And_Origin();

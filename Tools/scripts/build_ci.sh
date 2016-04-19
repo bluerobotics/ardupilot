@@ -12,8 +12,16 @@ c_compiler=${CC:-gcc}
 cxx_compiler=${CXX:-g++}
 unset CXX CC
 
-export BUILDROOT=/tmp/travis.build.$$
+export BUILDROOT=/tmp/ci.build
 rm -rf $BUILDROOT
+export GIT_VERSION="ci_test"
+export NUTTX_GIT_VERSION="ci_test"
+export PX4_GIT_VERSION="ci_test"
+export CCACHE_SLOPPINESS="include_file_ctime,include_file_mtime"
+
+if [[ "$cxx_compiler" == "clang++" ]]; then
+  export CCACHE_CPP2="true"
+fi
 
 # If CI_BUILD_TARGET is not set, default to all of them
 if [ -z "$CI_BUILD_TARGET" ]; then
@@ -61,6 +69,11 @@ waf=modules/waf/waf-light
 
 # get list of boards supported by the waf build
 for board in $($waf list_boards | head -n1); do waf_supported_boards[$board]=1; done
+
+echo "Temporarily disabling px4 waf builds (broken in px4 merge)"
+waf_supported_boards[px4-v1]=""
+waf_supported_boards[px4-v2]=""
+waf_supported_boards[px4-v4]=""
 
 echo "Targets: $CI_BUILD_TARGET"
 for t in $CI_BUILD_TARGET; do

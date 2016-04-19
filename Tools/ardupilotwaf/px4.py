@@ -18,8 +18,8 @@ def _load_dynamic_env_data(bld):
         _dynamic_env_data[name] = bldnode.find_node(name).read().split(';')
 
     _dynamic_env_data['DEFINES'] = [
-        'NUTTX_GIT_VERSION="%s"' % bld.git_submodule_head_hash('PX4NuttX')[:8],
-        'PX4_GIT_VERSION="%s"' % bld.git_submodule_head_hash('PX4Firmware')[:8],
+        'NUTTX_GIT_VERSION="%s"' % os.environ.get('NUTTX_GIT_VERSION', bld.git_submodule_head_hash('PX4NuttX')[:8]),
+        'PX4_GIT_VERSION="%s"' % os.environ.get('PX4_GIT_VERSION', bld.git_submodule_head_hash('PX4Firmware')[:8]),
     ]
 
 @feature('px4_ap_stlib', 'px4_ap_program')
@@ -275,6 +275,7 @@ def configure(cfg):
             # PX4Firmware build systems (cmake and legacy make-based) can live
             # together
             '-DCMAKE_BUILD',
+            '-DARDUPILOT_BUILD',
             '-I%s' % bldpath('libraries/GCS_MAVLink'),
             '-Wl,--gc-sections',
         )),
