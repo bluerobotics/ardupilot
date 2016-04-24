@@ -15,7 +15,6 @@ The majority of code changes required for the ArduSub are held in the [/ArduSub/
 - **AP_Motors:** Added AP_Motors6DOF, AP_MotorsBlueROV6DOF, AP_MotorsVectoredROV classes 
 - **AP_RCMapper:** Added "forward" and "strafe" input axes
 
-
 ## How To Get Involved ##
 
 The ArduSub project is open source and we encourage participation and code contributions: [guidelines for contributors to the ardupilot codebase](http://dev.ardupilot.com/wiki/guidelines-for-contributors-to-the-apm-codebase).
