@@ -6,7 +6,7 @@
    Authors:    Doug Weibel, Jose Julio, Jordi Munoz, Jason Short, Randy Mackay, Pat Hickey, John Arne Birkeland, Olivier Adler, Amilcar Lucas, Gregory Fletcher, Paul Riseborough, Brandon Jones, Jon Challinger
    Thanks to:  Chris Anderson, Michael Oborne, Paul Mather, Bill Premerlani, James Cohen, JB from rotorFX, Automatik, Fefenin, Peter Meister, Remzibi, Yury Smirnov, Sandro Benigno, Max Levine, Roberto Navoni, Lorenz Meier, Yury MonZon
 
-   Please contribute your ideas! See http://dev.ardupilot.com for details
+   Please contribute your ideas! See http://dev.ardupilot.org for details
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -73,7 +73,8 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(update_mount,           50,    100),
     SCHED_TASK(update_trigger,         50,    100),
     SCHED_TASK(log_perf_info,         0.2,    100),
-    SCHED_TASK(compass_save,        0.016,    200),
+    SCHED_TASK(compass_save,          0.1,    200),
+    SCHED_TASK(Log_Write_Attitude,     25,    300),
     SCHED_TASK(update_logging1,        10,    300),
     SCHED_TASK(update_logging2,        10,    300),
     SCHED_TASK(parachute_check,        10,    200),
@@ -157,10 +158,6 @@ void Plane::ahrs_update()
 #endif
 
     ahrs.update();
-
-    if (should_log(MASK_LOG_ATTITUDE_FAST)) {
-        Log_Write_Attitude();
-    }
 
     if (should_log(MASK_LOG_IMU)) {
         Log_Write_IMU();
@@ -294,7 +291,7 @@ void Plane::obc_fs_check(void)
 {
 #if OBC_FAILSAFE == ENABLED
     // perform OBC failsafe checks
-    obc.check(OBC_MODE(control_mode), failsafe.last_heartbeat_ms, geofence_breached(), failsafe.last_valid_rc_ms);
+    obc.check(OBC_MODE(control_mode), failsafe.last_heartbeat_ms, geofence_breached(), failsafe.AFS_last_valid_rc_ms);
 #endif
 }
 
@@ -357,7 +354,12 @@ void Plane::log_perf_info()
 
 void Plane::compass_save()
 {
-    if (g.compass_enabled) {
+    if (g.compass_enabled &&
+        compass.get_learn_type() >= Compass::LEARN_INTERNAL &&
+        !hal.util->get_soft_armed()) {
+        /*
+          only save offsets when disarmed
+         */
         compass.save_offsets();
     }
 }
@@ -485,14 +487,16 @@ void Plane::update_GPS_10Hz(void)
  */
 void Plane::handle_auto_mode(void)
 {
-    uint8_t nav_cmd_id;
+    uint16_t nav_cmd_id;
 
-    // we should be either running a mission or RTLing home
-    if (mission.state() == AP_Mission::MISSION_RUNNING) {
-        nav_cmd_id = mission.get_current_nav_cmd().id;
-    }else{
-        nav_cmd_id = auto_rtl_command.id;
+    if (mission.state() != AP_Mission::MISSION_RUNNING) {
+        // this should never be reached
+        set_mode(RTL);
+        GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_INFO, "Aircraft in auto without a running mission");
+        return;
     }
+
+    nav_cmd_id = mission.get_current_nav_cmd().id;
 
     if (quadplane.in_vtol_auto()) {
         quadplane.control_auto(next_WP_loc);
@@ -710,7 +714,8 @@ void Plane::update_flight_mode(void)
     case QSTABILIZE:
     case QHOVER:
     case QLOITER:
-    case QLAND: {
+    case QLAND:
+    case QRTL: {
         // set nav_roll and nav_pitch using sticks
         nav_roll_cd  = channel_roll->norm_input() * roll_limit_cd;
         nav_roll_cd = constrain_int32(nav_roll_cd, -roll_limit_cd, roll_limit_cd);
@@ -739,11 +744,17 @@ void Plane::update_navigation()
     
     switch(control_mode) {
     case AUTO:
-        update_commands();
+        if (home_is_set != HOME_UNSET) {
+            mission.update();
+        }
         break;
             
     case RTL:
-        if (g.rtl_autoland == 1 &&
+        if (quadplane.available() && quadplane.rtl_mode == 1 &&
+            nav_controller->reached_loiter_target()) {
+            set_mode(QRTL);
+            break;
+        } else if (g.rtl_autoland == 1 &&
             !auto_state.checked_for_autoland &&
             nav_controller->reached_loiter_target() && 
             labs(altitude_error_cm) < 1000) {
@@ -791,6 +802,7 @@ void Plane::update_navigation()
     case QHOVER:
     case QLOITER:
     case QLAND:
+    case QRTL:
         // nothing to do
         break;
     }
@@ -839,6 +851,10 @@ void Plane::set_flight_stage(AP_SpdHgtControl::FlightStage fs)
     
 
     flight_stage = fs;
+
+    if (should_log(MASK_LOG_MODE)) {
+        Log_Write_Status();
+    }
 }
 
 void Plane::update_alt()
@@ -866,28 +882,30 @@ void Plane::update_alt()
 
     update_flight_stage();
 
-    bool is_doing_auto_land = (control_mode == AUTO) && (mission.get_current_nav_cmd().id == MAV_CMD_NAV_LAND);
-    float distance_beyond_land_wp = 0;
-    if (is_doing_auto_land && location_passed_point(current_loc, prev_WP_loc, next_WP_loc)) {
-        distance_beyond_land_wp = get_distance(current_loc, next_WP_loc);
-    }
-
     if (auto_throttle_mode && !throttle_suppressed) {        
 
-        // set Flight stage for controller. If not in AUTO then assume normal operation.
-        // this prevents TECS from being stuck in the wrong stage if you switch from
-        // AUTO to, say, FBWB during an aborted landing
-        AP_SpdHgtControl::FlightStage fs = flight_stage;
-        if (control_mode != AUTO) {
-            fs = AP_SpdHgtControl::FLIGHT_NORMAL;
+        bool is_doing_auto_land = false;
+        float distance_beyond_land_wp = 0;
+
+        switch (flight_stage) {
+        case AP_SpdHgtControl::FLIGHT_LAND_APPROACH:
+        case AP_SpdHgtControl::FLIGHT_LAND_PREFLARE:
+        case AP_SpdHgtControl::FLIGHT_LAND_FINAL:
+            is_doing_auto_land = true;
+            if (location_passed_point(current_loc, prev_WP_loc, next_WP_loc)) {
+                distance_beyond_land_wp = get_distance(current_loc, next_WP_loc);
+            }
+            break;
+        default:
+            break;
         }
 
         SpdHgt_Controller->update_pitch_throttle(relative_target_altitude_cm(),
                                                  target_airspeed_cm,
-                                                 fs,
+                                                 flight_stage,
                                                  is_doing_auto_land,
                                                  distance_beyond_land_wp,
-                                                 auto_state.takeoff_pitch_cd,
+                                                 get_takeoff_pitch_min_cd(),
                                                  throttle_nudge,
                                                  tecs_hgt_afe(),
                                                  aerodynamic_load_factor);
@@ -921,10 +939,12 @@ void Plane::update_flight_stage(void)
                 } else if (auto_state.land_pre_flare == true) {
                     set_flight_stage(AP_SpdHgtControl::FLIGHT_LAND_PREFLARE);
                 } else if (flight_stage != AP_SpdHgtControl::FLIGHT_LAND_APPROACH) {
-                    float path_progress = location_path_proportion(current_loc, prev_WP_loc, next_WP_loc);
-                    bool lined_up = abs(nav_controller->bearing_error_cd()) < 1000;
+                    bool heading_lined_up = abs(nav_controller->bearing_error_cd()) < 1000 && !nav_controller->data_is_stale();
+                    bool on_flight_line = abs(nav_controller->crosstrack_error() < 5) && !nav_controller->data_is_stale();
                     bool below_prev_WP = current_loc.alt < prev_WP_loc.alt;
-                    if ((path_progress > 0.15f && lined_up && below_prev_WP) || path_progress > 0.5f) {
+                    if ((auto_state.wp_proportion >= 0 && heading_lined_up && on_flight_line) ||
+                        (auto_state.wp_proportion > 0.15f && heading_lined_up && below_prev_WP) ||
+                        (auto_state.wp_proportion > 0.5f)) {
                         set_flight_stage(AP_SpdHgtControl::FLIGHT_LAND_APPROACH);
                     } else {
                         set_flight_stage(AP_SpdHgtControl::FLIGHT_NORMAL);                        
@@ -936,6 +956,9 @@ void Plane::update_flight_stage(void)
                 set_flight_stage(AP_SpdHgtControl::FLIGHT_NORMAL);
             }
         } else {
+            // If not in AUTO then assume normal operation for normal TECS operation.
+            // This prevents TECS from being stuck in the wrong stage if you switch from
+            // AUTO to, say, FBWB during a landing, an aborted landing or takeoff.
             set_flight_stage(AP_SpdHgtControl::FLIGHT_NORMAL);
         }
     } else if (quadplane.in_vtol_mode() ||

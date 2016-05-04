@@ -102,7 +102,7 @@ def convert_gpx():
     import glob
     mavlog = glob.glob(util.reltopdir("../buildlogs/*.tlog"))
     for m in mavlog:
-        util.run_cmd(util.reltopdir("../mavlink/pymavlink/tools/mavtogpx.py") + " --nofixcheck " + m)
+        util.run_cmd(util.reltopdir("modules/mavlink/pymavlink/tools/mavtogpx.py") + " --nofixcheck " + m)
         gpx = m + '.gpx'
         kml = m + '.kml'
         util.run_cmd('gpsbabel -i gpx -f %s -o kml,units=m,floating=1,extrude=1 -F %s' % (gpx, kml), checkfail=False)
@@ -138,6 +138,7 @@ parser.add_option("--viewerip", default=None, help='IP address to send MAVLink a
 parser.add_option("--map", action='store_true', default=False, help='show map')
 parser.add_option("--experimental", default=False, action='store_true', help='enable experimental tests')
 parser.add_option("--timeout", default=3000, type='int', help='maximum runtime in seconds')
+parser.add_option("--valgrind", default=False, action='store_true', help='run ArduPilot binaries under valgrind')
 parser.add_option("-j", default=1, type='int', help='build CPUs')
 
 opts, args = parser.parse_args()
@@ -225,19 +226,19 @@ def run_step(step):
         return get_default_params('APMrover2')
 
     if step == 'fly.ArduCopter':
-        return arducopter.fly_ArduCopter(viewerip=opts.viewerip, map=opts.map)
+        return arducopter.fly_ArduCopter(viewerip=opts.viewerip, map=opts.map, valgrind=opts.valgrind)
 
     if step == 'fly.CopterAVC':
-        return arducopter.fly_CopterAVC(viewerip=opts.viewerip, map=opts.map)
+        return arducopter.fly_CopterAVC(viewerip=opts.viewerip, map=opts.map, valgrind=opts.valgrind)
 
     if step == 'fly.ArduPlane':
-        return arduplane.fly_ArduPlane(viewerip=opts.viewerip, map=opts.map)
+        return arduplane.fly_ArduPlane(viewerip=opts.viewerip, map=opts.map, valgrind=opts.valgrind)
 
     if step == 'fly.QuadPlane':
-        return quadplane.fly_QuadPlane(viewerip=opts.viewerip, map=opts.map)
+        return quadplane.fly_QuadPlane(viewerip=opts.viewerip, map=opts.map, valgrind=opts.valgrind)
 
     if step == 'drive.APMrover2':
-        return apmrover2.drive_APMrover2(viewerip=opts.viewerip, map=opts.map)
+        return apmrover2.drive_APMrover2(viewerip=opts.viewerip, map=opts.map, valgrind=opts.valgrind)
 
     if step == 'build.All':
         return build_all()

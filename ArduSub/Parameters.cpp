@@ -33,8 +33,8 @@ const AP_Param::Info Sub::var_info[] = {
 	// @Param: SURFACE_DEPTH
 	// @DisplayName: Depth reading at surface
 	// @Description: The depth the external pressure sensor will read when the vehicle is considered at the surface (in centimeters)
-	// @Range: -5.0 -100.0
-	// @User: Standard
+	// @Range: -100 0
+    // @User: Standard
 	GSCALAR(surface_depth, "SURFACE_DEPTH", SURFACE_DEPTH_DEFAULT),
 
     // @Param: SYSID_SW_MREV
@@ -137,6 +137,15 @@ const AP_Param::Info Sub::var_info[] = {
     // @Increment: 1
     // @User: Standard
     GSCALAR(rtl_altitude,   "RTL_ALT",     RTL_ALT),
+
+	// @Param: RTL_CONE_SLOPE
+	// @DisplayName: RTL cone slope
+	// @Description: Defines a cone above home which determines maximum climb
+	// @Range: 0.5 10.0
+	// @Increment: .1
+	// @Values: 0:Disabled,1:Shallow,3:Steep
+	// @User: Standard
+	GSCALAR(rtl_cone_slope,   "RTL_CONE_SLOPE",     RTL_CONE_SLOPE),
 
     // @Param: RTL_SPEED
     // @DisplayName: RTL speed
@@ -723,6 +732,12 @@ const AP_Param::Info Sub::var_info[] = {
     // @Increment: 10
     // @Units: cm/s/s
     // @User: Advanced
+
+	// @Param: VEL_XY_FILT_HZ
+	// @DisplayName: Velocity (horizontal) filter frequency in Hz
+	// @Description: Velocity (horizontal) filter frequency in Hz
+	// @Units: Hz
+	// @User: Advanced
     GGROUP(pi_vel_xy,   "VEL_XY_",  AC_PI_2D),
 
     // @Param: VEL_Z_P
@@ -758,7 +773,7 @@ const AP_Param::Info Sub::var_info[] = {
     // @Range: 0.000 0.400
     // @User: Standard
 
-    // @Param: ACCEL_Z_FILT_HZ
+    // @Param: ACCEL_Z_FILT
     // @DisplayName: Throttle acceleration filter
     // @Description: Filter applied to acceleration to reduce noise.  Lower values reduce noise but add delay.
     // @Range: 1.000 100.000
@@ -847,10 +862,10 @@ const AP_Param::Info Sub::var_info[] = {
     GOBJECT(circle_nav, "CIRCLE_",  AC_Circle),
 
     // @Group: ATC_
-    // @Path: ../libraries/AC_AttitudeControl/AC_AttitudeControl_Multi.cpp
+    // @Path: ../libraries/AC_AttitudeControl/AC_AttitudeControl_Multi.cpp,../libraries/AC_AttitudeControl/AC_AttitudeControl.cpp
     GOBJECT(attitude_control, "ATC_", AC_AttitudeControl_Multi),
 
-    // @Group: POSCON_
+    // @Group: PSC
     // @Path: ../libraries/AC_AttitudeControl/AC_PosControl.cpp
     GOBJECT(pos_control, "PSC", AC_PosControl),
 
@@ -1022,6 +1037,13 @@ const AP_Param::Info Sub::var_info[] = {
 	// @Values: 0:Stopped,1:Running
 	// @User: Standard
 	GSCALAR(throw_motor_start, "THROW_MOT_START", 0),
+
+	// @Param: TERRAIN_FOLLOW
+	// @DisplayName: Terrain Following use control
+	// @Description: This enables terrain following for RTL and LAND flight modes. To use this option TERRAIN_ENABLE must be 1 and the GCS must  support sending terrain data to the aircraft.  In RTL the RTL_ALT will be considered a height above the terrain.  In LAND mode the vehicle will slow to LAND_SPEED 10m above terrain (instead of 10m above home).  This parameter does not affect AUTO and Guided which use a per-command flag to determine if the height is above-home, absolute or above-terrain.
+	// @Values: 0:Do Not Use in RTL and Land 1:Use in RTL and Land
+	// @User: Standard
+	GSCALAR(terrain_follow, "TERRAIN_FOLLOW", 0),
 
     AP_VAREND
 };

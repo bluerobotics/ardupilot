@@ -144,6 +144,7 @@ void Plane::stabilize_stick_mixing_direct()
         control_mode == QHOVER ||
         control_mode == QLOITER ||
         control_mode == QLAND ||
+        control_mode == QRTL ||
         control_mode == TRAINING) {
         return;
     }
@@ -167,6 +168,7 @@ void Plane::stabilize_stick_mixing_fbw()
         control_mode == QHOVER ||
         control_mode == QLOITER ||
         control_mode == QLAND ||
+        control_mode == QRTL ||
         control_mode == TRAINING ||
         (control_mode == AUTO && g.auto_fbw_steer == 42)) {
         return;
@@ -367,7 +369,8 @@ void Plane::stabilize()
     } else if (control_mode == QSTABILIZE ||
                control_mode == QHOVER ||
                control_mode == QLOITER ||
-               control_mode == QLAND) {
+               control_mode == QLAND ||
+               control_mode == QRTL) {
         quadplane.control_run();
     } else {
         if (g.stick_mixing == STICK_MIXING_FBW && control_mode != STABILIZE) {
@@ -513,9 +516,8 @@ void Plane::calc_nav_pitch()
  */
 void Plane::calc_nav_roll()
 {
-    nav_roll_cd = nav_controller->nav_roll_cd();
+    nav_roll_cd = constrain_int32(nav_controller->nav_roll_cd(), -roll_limit_cd, roll_limit_cd);
     update_load_factor();
-    nav_roll_cd = constrain_int32(nav_roll_cd, -roll_limit_cd, roll_limit_cd);
 }
 
 
@@ -1177,7 +1179,7 @@ bool Plane::allow_reverse_thrust(void)
     switch (control_mode) {
     case AUTO:
         {
-        uint8_t nav_cmd = mission.get_current_nav_cmd().id;
+        uint16_t nav_cmd = mission.get_current_nav_cmd().id;
 
         // never allow reverse thrust during takeoff
         if (nav_cmd == MAV_CMD_NAV_TAKEOFF) {

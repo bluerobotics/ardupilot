@@ -68,7 +68,7 @@
  *  ..and many more.
  *
  *  Code commit statistics can be found here: https://github.com/diydrones/ardupilot/graphs/contributors
- *  Wiki: http://copter.ardupilot.com/
+ *  Wiki: http://copter.ardupilot.org/
  *  Requires modified version of Arduino, which can be found here: http://ardupilot.com/downloads/?category=6
  *
  */
@@ -79,19 +79,8 @@
 
 /*
   scheduler table for fast CPUs - all regular tasks apart from the fast_loop()
-  should be listed here, along with how often they should be called
-  (in 2.5ms units) and the maximum time they are expected to take (in
-  microseconds)
-  1    = 400hz
-  2    = 200hz
-  4    = 100hz
-  8    = 50hz
-  20   = 20hz
-  40   = 10hz
-  133  = 3hz
-  400  = 1hz
-  4000 = 0.1hz
-  
+  should be listed here, along with how often they should be called (in hz)
+  and the maximum time they are expected to take (in microseconds)
  */
 const AP_Scheduler::Task Sub::scheduler_tasks[] = {
     SCHED_TASK(rc_loop,              100,    130),
@@ -137,6 +126,7 @@ const AP_Scheduler::Task Sub::scheduler_tasks[] = {
 #if FRSKY_TELEM_ENABLED == ENABLED
     SCHED_TASK(frsky_telemetry_send,   5,     75),
 #endif
+	SCHED_TASK(terrain_update,        10,    100),
 #if EPM_ENABLED == ENABLED
     SCHED_TASK(epm_update,            10,     75),
 #endif
@@ -301,9 +291,6 @@ void Sub::rc_loop()
 // ---------------------------
 void Sub::throttle_loop()
 {
-    // get altitude and climb rate from inertial lib
-    read_inertial_altitude();
-
     // update throttle_low_comp value (controls priority of throttle vs attitude control)
     update_throttle_thr_mix();
 
@@ -444,6 +431,9 @@ void Sub::three_hz_loop()
     // check if we've lost contact with the ground station
     failsafe_gcs_check();
 
+    // check if we've lost terrain data
+    failsafe_terrain_check();
+
 #if AC_FENCE == ENABLED
     // check if we have breached a fence
     fence_check();
@@ -488,24 +478,14 @@ void Sub::one_hz_loop()
 
     check_usb_mux();
 
-#if AP_TERRAIN_AVAILABLE && AC_TERRAIN
-    terrain.update();
-
-    // tell the rangefinder our height, so it can go into power saving
-    // mode if available
-#if CONFIG_SONAR == ENABLED
-    float height;
-    if (terrain.height_above_terrain(height, true)) {
-        sonar.set_estimated_terrain_height(height);
-    }
-#endif
-#endif
-
     // update position controller alt limits
     update_poscon_alt_max();
 
     // enable/disable raw gyro/accel logging
     ins.set_raw_logging(should_log(MASK_LOG_IMU_RAW));
+
+    // log terrain data
+    terrain_logging();
 }
 
 // called at 50hz
