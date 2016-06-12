@@ -118,8 +118,11 @@ void AP_AHRS_NavEKF::update_EKF1(void)
             start_time_ms = AP_HAL::millis();
         }
         // slight extra delay on EKF1 to prioritise EKF2 for memory
-        if (AP_HAL::millis() - start_time_ms > startup_delay_ms + 100U) {
+        if (AP_HAL::millis() - start_time_ms > startup_delay_ms + 100U || force_ekf) {
             ekf1_started = EKF1.InitialiseFilterDynamic();
+            if (force_ekf) {
+                return;
+            }
         }
     }
     if (ekf1_started) {
@@ -189,8 +192,11 @@ void AP_AHRS_NavEKF::update_EKF2(void)
         if (start_time_ms == 0) {
             start_time_ms = AP_HAL::millis();
         }
-        if (AP_HAL::millis() - start_time_ms > startup_delay_ms) {
+        if (AP_HAL::millis() - start_time_ms > startup_delay_ms || force_ekf) {
             ekf2_started = EKF2.InitialiseFilter();
+            if (force_ekf) {
+                return;
+            }
         }
     }
     if (ekf2_started) {
@@ -733,7 +739,7 @@ AP_AHRS_NavEKF::EKF_TYPE AP_AHRS_NavEKF::active_EKF_type(void) const
             return EKF_TYPE_NONE;
         }
         if (always_use_EKF()) {
-            uint8_t ekf_faults;
+            uint16_t ekf_faults;
             EKF1.getFilterFaults(ekf_faults);
             if (ekf_faults == 0) {
                 ret = EKF_TYPE1;
@@ -751,7 +757,7 @@ AP_AHRS_NavEKF::EKF_TYPE AP_AHRS_NavEKF::active_EKF_type(void) const
             return EKF_TYPE_NONE;
         }
         if (always_use_EKF()) {
-            uint8_t ekf2_faults;
+            uint16_t ekf2_faults;
             EKF2.getFilterFaults(-1,ekf2_faults);
             if (ekf2_faults == 0) {
                 ret = EKF_TYPE2;
@@ -801,10 +807,26 @@ AP_AHRS_NavEKF::EKF_TYPE AP_AHRS_NavEKF::active_EKF_type(void) const
             return EKF_TYPE_NONE;
         }
         if (!filt_state.flags.attitude ||
-                !filt_state.flags.horiz_vel ||
-                !filt_state.flags.vert_vel ||
-                !filt_state.flags.horiz_pos_abs ||
-                !filt_state.flags.vert_pos) {
+            !filt_state.flags.vert_vel ||
+            !filt_state.flags.vert_pos) {
+            return EKF_TYPE_NONE;
+        }
+        if (!filt_state.flags.horiz_vel ||
+            !filt_state.flags.horiz_pos_abs) {
+            if ((!_compass || !_compass->use_for_yaw()) &&
+                _gps.status() >= AP_GPS::GPS_OK_FIX_3D &&
+                _gps.ground_speed() < 2) {
+                /*
+                  special handling for non-compass mode when sitting
+                  still. The EKF may not yet have aligned its yaw. We
+                  accept EKF as healthy to allow arming. Once we reach
+                  speed the EKF should get yaw alignment
+                */
+                if (filt_state.flags.pred_horiz_pos_abs &&
+                    filt_state.flags.pred_horiz_pos_rel) {
+                    return ret;
+                }
+            }
             return EKF_TYPE_NONE;
         }
     }
@@ -935,7 +957,7 @@ void  AP_AHRS_NavEKF::writeOptFlowMeas(uint8_t &rawFlowQuality, Vector2f &rawFlo
     EKF2.writeOptFlowMeas(rawFlowQuality, rawFlowRates, rawGyroRates, msecFlowMeas);
 }
 
-// inhibit GPS useage
+// inhibit GPS usage
 uint8_t AP_AHRS_NavEKF::setInhibitGPS(void)
 {
     switch (ekf_type()) {
@@ -1265,6 +1287,18 @@ bool AP_AHRS_NavEKF::getGpsGlitchStatus()
     return ekf_status.flags.gps_glitching;
 }
 
+
+// is the EKF backend doing its own sensor logging?
+bool AP_AHRS_NavEKF::have_ekf_logging(void) const
+{
+    switch (ekf_type()) {
+    case 2:
+        return EKF2.have_ekf_logging();
+    default:
+        break;
+    }
+    return false;
+}
 
 #endif // AP_AHRS_NAVEKF_AVAILABLE
 

@@ -220,6 +220,10 @@
  # define ELEVON_CH2_REVERSE     DISABLED
 #endif
 
+#ifndef DSPOILR_RUD_RATE_DEFAULT
+ #define DSPOILR_RUD_RATE_DEFAULT 100
+#endif
+
 //////////////////////////////////////////////////////////////////////////////
 // CAMERA TRIGGER AND CONTROL
 //
@@ -412,14 +416,4 @@
 // Parachute release
 #ifndef PARACHUTE
 #define PARACHUTE ENABLED
-#endif
-
-/*
-  build a firmware version string.
-  GIT_VERSION comes from Makefile builds
-*/
-#ifndef GIT_VERSION
-#define FIRMWARE_STRING THISFIRMWARE
-#else
-#define FIRMWARE_STRING THISFIRMWARE " (" GIT_VERSION ")"
 #endif

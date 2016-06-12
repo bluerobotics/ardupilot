@@ -116,7 +116,7 @@ void NavEKF2_core::InitialiseVariables()
     localFilterTimeStep_ms = MAX(localFilterTimeStep_ms,10);
 
     // initialise time stamps
-    imuSampleTime_ms = AP_HAL::millis();
+    imuSampleTime_ms = frontend->imuSampleTime_us / 1000;
     lastHealthyMagTime_ms = imuSampleTime_ms;
     prevTasStep_ms = imuSampleTime_ms;
     prevBetaStep_ms = imuSampleTime_ms;
@@ -153,7 +153,8 @@ void NavEKF2_core::InitialiseVariables()
     tasTimeout = true;
     badMagYaw = false;
     badIMUdata = false;
-    firstMagYawInit = false;
+    firstInflightYawInit = false;
+    firstInflightMagInit = false;
     dtIMUavg = 0.0025f;
     dtEkfAvg = 0.01f;
     dt = 0;
@@ -197,6 +198,7 @@ void NavEKF2_core::InitialiseVariables()
     touchdownExpectedSet_ms = 0;
     expectGndEffectTouchdown = false;
     gpsSpdAccuracy = 0.0f;
+    gpsPosAccuracy = 0.0f;
     baroHgtOffset = 0.0f;
     yawResetAngle = 0.0f;
     lastYawReset_ms = 0;
@@ -239,11 +241,12 @@ void NavEKF2_core::InitialiseVariables()
     optFlowFusionDelayed = false;
     airSpdFusionDelayed = false;
     sideSlipFusionDelayed = false;
-    magFuseTiltInhibit = false;
     posResetNE.zero();
     velResetNE.zero();
     hgtInnovFiltState = 0.0f;
-    magSelectIndex = _ahrs->get_compass()->get_primary();
+    if (_ahrs->get_compass()) {
+        magSelectIndex = _ahrs->get_compass()->get_primary();
+    }
     imuDataDownSampledNew.delAng.zero();
     imuDataDownSampledNew.delVel.zero();
     imuDataDownSampledNew.delAngDT = 0.0f;
@@ -251,6 +254,10 @@ void NavEKF2_core::InitialiseVariables()
     runUpdates = false;
     framesSincePredict = 0;
     lastMagOffsetsValid = false;
+    magStateResetRequest = false;
+    magStateInitComplete = false;
+    magYawResetRequest = false;
+    gpsYawResetRequest = false;
 
     // zero data buffers
     storedIMU.reset();
@@ -423,7 +430,7 @@ void NavEKF2_core::UpdateFilter(bool predict)
     // TODO - in-flight restart method
 
     //get starting time for update step
-    imuSampleTime_ms = AP_HAL::millis();
+    imuSampleTime_ms = frontend->imuSampleTime_us / 1000;
 
     // Check arm status and perform required checks and mode changes
     controlFilterModes();
@@ -506,9 +513,17 @@ void NavEKF2_core::UpdateStrapdownEquationsNED()
     // calculate a magnitude of the filtered nav acceleration (required for GPS
     // variance estimation)
     accNavMag = velDotNEDfilt.length();
-    accNavMagHoriz = pythagorous2(velDotNEDfilt.x , velDotNEDfilt.y);
+    accNavMagHoriz = norm(velDotNEDfilt.x , velDotNEDfilt.y);
 
-    // save velocity for use in trapezoidal intergration for position calcuation
+    // if we are not aiding, then limit the horizontal magnitude of acceleration
+    // to prevent large manoeuvre transients disturbing the attitude
+    if ((PV_AidingMode == AID_NONE) && (accNavMagHoriz > 5.0f)) {
+        float gain = 5.0f/accNavMagHoriz;
+        delVelNav.x *= gain;
+        delVelNav.y *= gain;
+    }
+
+    // save velocity for use in trapezoidal integration for position calcuation
     Vector3f lastVelocity = stateStruct.velocity;
 
     // sum delta velocities to get velocity
@@ -563,7 +578,7 @@ void  NavEKF2_core::calcOutputStatesFast() {
     Vector3f delVelNav  = Tbn_temp*imuDataNew.delVel + delVelCorrection;
     delVelNav.z += GRAVITY_MSS*imuDataNew.delVelDT;
 
-    // save velocity for use in trapezoidal intergration for position calcuation
+    // save velocity for use in trapezoidal integration for position calcuation
     Vector3f lastVelocity = outputDataNew.velocity;
 
     // sum delta velocities to get velocity
@@ -619,7 +634,7 @@ void  NavEKF2_core::calcOutputStatesFast() {
 
 /*
  * Calculate the predicted state covariance matrix using algebraic equations generated with Matlab symbolic toolbox.
- * The script file used to generate these and otehr equations in this filter can be found here:
+ * The script file used to generate these and other equations in this filter can be found here:
  * https://github.com/priseborough/InertialNav/blob/master/derivations/RotationVectorAttitudeParameterisation/GenerateNavFilterEquations.m
 */
 void NavEKF2_core::CovariancePrediction()
@@ -631,12 +646,12 @@ void NavEKF2_core::CovariancePrediction()
     float dAngScaleSigma;// delta angle scale factor 1-Sigma process noise
     float magEarthSigma;// earth magnetic field 1-sigma process noise
     float magBodySigma; // body magnetic field 1-sigma process noise
-    float daxNoise;     // X axis delta angle noise (rad)
-    float dayNoise;     // Y axis delta angle noise (rad)
-    float dazNoise;     // Z axis delta angle noise (rad)
-    float dvxNoise;     // X axis delta velocity noise (m/s)
-    float dvyNoise;     // Y axis delta velocity noise (m/s)
-    float dvzNoise;     // Z axis delta velocity noise (m/s)
+    float daxNoise;     // X axis delta angle noise variance rad^2
+    float dayNoise;     // Y axis delta angle noise variance rad^2
+    float dazNoise;     // Z axis delta angle noise variance rad^2
+    float dvxNoise;     // X axis delta velocity variance noise (m/s)^2
+    float dvyNoise;     // Y axis delta velocity variance noise (m/s)^2
+    float dvzNoise;     // Z axis delta velocity variance noise (m/s)^2
     float dvx;          // X axis delta velocity (m/s)
     float dvy;          // Y axis delta velocity (m/s)
     float dvz;          // Z axis delta velocity (m/s)
@@ -665,12 +680,12 @@ void NavEKF2_core::CovariancePrediction()
 
     // use filtered height rate to increase wind process noise when climbing or descending
     // this allows for wind gradient effects.
-    windVelSigma  = dt * constrain_float(frontend->_windVelProcessNoise, 0.01f, 1.0f) * (1.0f + constrain_float(frontend->_wndVarHgtRateScale, 0.0f, 1.0f) * fabsf(hgtRate));
-    dAngBiasSigma = dt * constrain_float(frontend->_gyroBiasProcessNoise, 0.0f, 1e-4f);
-    dVelBiasSigma = dt * constrain_float(frontend->_accelBiasProcessNoise, 1e-6f, 1e-2f);
-    dAngScaleSigma = dt * constrain_float(frontend->_gyroScaleProcessNoise,1e-6f,1e-2f);
-    magEarthSigma = dt * constrain_float(frontend->_magProcessNoise, 1e-4f, 1e-1f);
-    magBodySigma  = dt * constrain_float(frontend->_magProcessNoise, 1e-4f, 1e-1f);
+    windVelSigma  = dt * constrain_float(frontend->_windVelProcessNoise, 0.0f, 1.0f) * (1.0f + constrain_float(frontend->_wndVarHgtRateScale, 0.0f, 1.0f) * fabsf(hgtRate));
+    dAngBiasSigma = sq(dt) * constrain_float(frontend->_gyroBiasProcessNoise, 0.0f, 1.0f);
+    dVelBiasSigma = sq(dt) * constrain_float(frontend->_accelBiasProcessNoise, 0.0f, 1.0f);
+    dAngScaleSigma = dt * constrain_float(frontend->_gyroScaleProcessNoise, 0.0f, 1.0f);
+    magEarthSigma = dt * constrain_float(frontend->_magProcessNoise, 0.0f, 1.0f);
+    magBodySigma  = dt * constrain_float(frontend->_magProcessNoise, 0.0f, 1.0f);
     for (uint8_t i= 0; i<=8;  i++) processNoise[i] = 0.0f;
     for (uint8_t i=9; i<=11; i++) processNoise[i] = dAngBiasSigma;
     for (uint8_t i=12; i<=14; i++) processNoise[i] = dAngScaleSigma;
@@ -703,16 +718,16 @@ void NavEKF2_core::CovariancePrediction()
     day_s = stateStruct.gyro_scale.y;
     daz_s = stateStruct.gyro_scale.z;
     dvz_b = stateStruct.accel_zbias;
-    float _gyrNoise = constrain_float(frontend->_gyrNoise, 1e-4f, 1e-2f);
-    daxNoise = dayNoise = dazNoise = dt*_gyrNoise;
-    float _accNoise = constrain_float(frontend->_accNoise, 1e-2f, 1.0f);
-    dvxNoise = dvyNoise = dvzNoise = dt*_accNoise;
+    float _gyrNoise = constrain_float(frontend->_gyrNoise, 0.0f, 1.0f);
+    daxNoise = dayNoise = dazNoise = sq(dt*_gyrNoise);
+    float _accNoise = constrain_float(frontend->_accNoise, 0.0f, 10.0f);
+    dvxNoise = dvyNoise = dvzNoise = sq(dt*_accNoise);
 
     // calculate the predicted covariance due to inertial sensor error propagation
     // we calculate the upper diagonal and copy to take advantage of symmetry
-    SF[0] = daz_b/2 + dazNoise/2 - (daz*daz_s)/2;
-    SF[1] = day_b/2 + dayNoise/2 - (day*day_s)/2;
-    SF[2] = dax_b/2 + daxNoise/2 - (dax*dax_s)/2;
+    SF[0] = daz_b/2 - (daz*daz_s)/2;
+    SF[1] = day_b/2 - (day*day_s)/2;
+    SF[2] = dax_b/2 - (dax*dax_s)/2;
     SF[3] = q3/2 - (q0*SF[0])/2 + (q1*SF[1])/2 - (q2*SF[2])/2;
     SF[4] = q0/2 - (q1*SF[2])/2 - (q2*SF[1])/2 + (q3*SF[0])/2;
     SF[5] = q1/2 + (q0*SF[2])/2 - (q2*SF[0])/2 - (q3*SF[1])/2;
@@ -726,9 +741,9 @@ void NavEKF2_core::CovariancePrediction()
     SF[13] = q1/2 - (q0*SF[2])/2 + (q2*SF[0])/2 - (q3*SF[1])/2;
     SF[14] = q3/2 + (q0*SF[0])/2 + (q1*SF[1])/2 + (q2*SF[2])/2;
     SF[15] = - sq(q0) - sq(q1) - sq(q2) - sq(q3);
-    SF[16] = dvz_b - dvz + dvzNoise;
-    SF[17] = dvx - dvxNoise;
-    SF[18] = dvy - dvyNoise;
+    SF[16] = dvz_b - dvz;
+    SF[17] = dvx;
+    SF[18] = dvy;
     SF[19] = sq(q2);
     SF[20] = SF[19] - sq(q0) + sq(q1) - sq(q3);
     SF[21] = SF[19] + sq(q0) - sq(q1) - sq(q3);
@@ -1281,7 +1296,6 @@ void NavEKF2_core::calcEarthRateNED(Vector3f &omega, int32_t latitude) const
 
 // initialise the earth magnetic field states using declination, suppled roll/pitch
 // and magnetometer measurements and return initial attitude quaternion
-// if no magnetometer data, do not update magnetic field states and assume zero yaw angle
 Quaternion NavEKF2_core::calcQuatAndFieldStates(float roll, float pitch)
 {
     // declare local variables required to calculate initial orientation and magnetic field
@@ -1308,7 +1322,7 @@ Quaternion NavEKF2_core::calcQuatAndFieldStates(float roll, float pitch)
 
         // calculate yaw angle rel to true north
         yaw = magDecAng - magHeading;
-        yawAlignComplete = true;
+
         // calculate initial filter quaternion states using yaw from magnetometer if mag heading healthy
         // otherwise use existing heading
         if (!badMagYaw) {
@@ -1323,6 +1337,8 @@ Quaternion NavEKF2_core::calcQuatAndFieldStates(float roll, float pitch)
             lastYawReset_ms = imuSampleTime_ms;
             // calculate an initial quaternion using the new yaw value
             initQuat.from_euler(roll, pitch, yaw);
+            // zero the attitude covariances becasue the corelations will now be invalid
+            zeroAttCovOnly();
         } else {
             initQuat = stateStruct.quat;
         }
@@ -1339,23 +1355,44 @@ Quaternion NavEKF2_core::calcQuatAndFieldStates(float roll, float pitch)
         zeroRows(P,16,21);
         zeroCols(P,16,21);
         // set initial earth magnetic field variances
-        P[16][16] = sq(0.05f);
+        P[16][16] = sq(frontend->_magNoise);
         P[17][17] = P[16][16];
         P[18][18] = P[16][16];
         // set initial body magnetic field variances
-        P[19][19] = sq(0.05f);
+        P[19][19] = sq(frontend->_magNoise);
         P[20][20] = P[19][19];
         P[21][21] = P[19][19];
 
         // clear bad magnetic yaw status
         badMagYaw = false;
+
+        // clear mag state reset request
+        magStateResetRequest = false;
+
+        // record the fact we have initialised the magnetic field states
+        recordMagReset();
     } else {
-        initQuat.from_euler(roll, pitch, 0.0f);
-        yawAlignComplete = false;
+        // this function should not be called if there is no compass data but if is is, return the
+        // current attitude
+        initQuat = stateStruct.quat;
     }
 
     // return attitude quaternion
     return initQuat;
+}
+
+// zero the attitude covariances, but preserve the variances
+void NavEKF2_core::zeroAttCovOnly()
+{
+    float varTemp[3];
+    for (uint8_t index=0; index<=2; index++) {
+        varTemp[index] = P[index][index];
+    }
+    zeroCols(P,0,2);
+    zeroRows(P,0,2);
+    for (uint8_t index=0; index<=2; index++) {
+        P[index][index] = varTemp[index];
+    }
 }
 
 #endif // HAL_CPU_CLASS

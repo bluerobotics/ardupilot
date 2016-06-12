@@ -25,6 +25,12 @@ bool Sub::auto_init(bool ignore_checks)
     if ((position_ok() && mission.num_commands() > 1) || ignore_checks) {
         auto_mode = Auto_Loiter;
 
+        // reject switching to auto mode if landed with motors armed but first command is not a takeoff (reduce change of flips)
+        if (motors.armed() && ap.land_complete && !mission.starts_with_takeoff_cmd()) {
+            gcs_send_text(MAV_SEVERITY_CRITICAL, "Auto: Missing Takeoff Cmd");
+            return false;
+        }
+
         // stop ROI from carrying over from previous runs of the mission
         // To-Do: reset the yaw as part of auto_wp_start when the previous command was not a wp command to remove the need for this special ROI check
         if (auto_yaw_mode == AUTO_YAW_ROI) {
@@ -155,7 +161,7 @@ void Sub::auto_takeoff_run()
     float target_yaw_rate = 0;
     if (!failsafe.radio) {
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
     }
 
     // set motors to full range
@@ -195,6 +201,7 @@ void Sub::auto_wp_start(const Location_Class& dest_loc)
 	if (!wp_nav.set_wp_destination(dest_loc)) {
 		// failure to set destination can only be because of missing terrain data
 		failsafe_terrain_on_event();
+		return;
 	}
 
     // initialise yaw
@@ -226,7 +233,7 @@ void Sub::auto_wp_run()
     float target_yaw_rate = 0;
     if (!failsafe.radio) {
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
         if (!is_zero(target_yaw_rate)) {
             set_auto_yaw_mode(AUTO_YAW_HOLD);
         }
@@ -261,9 +268,9 @@ void Sub::auto_spline_start(const Location_Class& destination, bool stopped_at_s
 
     // initialise wpnav
     if (!wp_nav.set_spline_destination(destination, stopped_at_start, seg_end_type, next_destination)) {
-        // failure to set destination (likely because of missing terrain data)
-        Log_Write_Error(ERROR_SUBSYSTEM_NAVIGATION, ERROR_CODE_FAILED_TO_SET_DESTINATION);
-        // To-Do: handle failure
+    	// failure to set destination can only be because of missing terrain data
+        failsafe_terrain_on_event();
+        return;
     }
 
     // initialise yaw
@@ -294,7 +301,7 @@ void Sub::auto_spline_run()
     float target_yaw_rate = 0;
     if (!failsafe.radio) {
         // get pilot's desired yaw rat
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
         if (!is_zero(target_yaw_rate)) {
             set_auto_yaw_mode(AUTO_YAW_HOLD);
         }
@@ -383,12 +390,12 @@ void Sub::auto_land_run()
             update_simple_mode();
 
             // process pilot's roll and pitch input
-            roll_control = channel_roll->control_in;
-            pitch_control = channel_pitch->control_in;
+            roll_control = channel_roll->get_control_in();
+            pitch_control = channel_pitch->get_control_in();
         }
 
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
     }
 
     // set motors to full range
@@ -472,7 +479,7 @@ void Sub::auto_circle_movetoedge_start(const Location_Class &circle_center, floa
 
 		// if we are outside the circle, point at the edge, otherwise hold yaw
 		const Vector3f &curr_pos = inertial_nav.get_position();
-		float dist_to_center = pythagorous2(circle_center_neu.x - curr_pos.x, circle_center_neu.y - curr_pos.y);
+		float dist_to_center = norm(circle_center_neu.x - curr_pos.x, circle_center_neu.y - curr_pos.y);
 		if (dist_to_center > circle_nav.get_radius() && dist_to_center > 500) {
 			set_auto_yaw_mode(get_default_auto_yaw_mode(false));
 		} else {
@@ -572,7 +579,7 @@ void Sub::auto_loiter_run()
     // accept pilot input of yaw
     float target_yaw_rate = 0;
     if(!failsafe.radio) {
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
     }
 
     // set motors to full range

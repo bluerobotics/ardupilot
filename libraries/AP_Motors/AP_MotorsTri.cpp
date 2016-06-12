@@ -128,18 +128,18 @@ void AP_MotorsTri::output_to_motors()
         case SHUT_DOWN:
             // sends minimum values out to the motors
             hal.rcout->cork();
-            rc_write(AP_MOTORS_MOT_1, _throttle_radio_min);
-            rc_write(AP_MOTORS_MOT_2, _throttle_radio_min);
-            rc_write(AP_MOTORS_MOT_4, _throttle_radio_min);
+            rc_write(AP_MOTORS_MOT_1, get_pwm_output_min());
+            rc_write(AP_MOTORS_MOT_2, get_pwm_output_min());
+            rc_write(AP_MOTORS_MOT_4, get_pwm_output_min());
             rc_write(AP_MOTORS_CH_TRI_YAW, _yaw_servo_trim);
             hal.rcout->push();
             break;
         case SPIN_WHEN_ARMED:
             // sends output to motors when armed but not flying
             hal.rcout->cork();
-            rc_write(AP_MOTORS_MOT_1, constrain_int16(_throttle_radio_min + _throttle_low_end_pct * _min_throttle, _throttle_radio_min, _throttle_radio_min + _min_throttle));
-            rc_write(AP_MOTORS_MOT_2, constrain_int16(_throttle_radio_min + _throttle_low_end_pct * _min_throttle, _throttle_radio_min, _throttle_radio_min + _min_throttle));
-            rc_write(AP_MOTORS_MOT_4, constrain_int16(_throttle_radio_min + _throttle_low_end_pct * _min_throttle, _throttle_radio_min, _throttle_radio_min + _min_throttle));
+            rc_write(AP_MOTORS_MOT_1, constrain_int16(get_pwm_output_min() + _throttle_low_end_pct * _min_throttle, get_pwm_output_min(), get_pwm_output_min() + _min_throttle));
+            rc_write(AP_MOTORS_MOT_2, constrain_int16(get_pwm_output_min() + _throttle_low_end_pct * _min_throttle, get_pwm_output_min(), get_pwm_output_min() + _min_throttle));
+            rc_write(AP_MOTORS_MOT_4, constrain_int16(get_pwm_output_min() + _throttle_low_end_pct * _min_throttle, get_pwm_output_min(), get_pwm_output_min() + _min_throttle));
             rc_write(AP_MOTORS_CH_TRI_YAW, _yaw_servo_trim);
             hal.rcout->push();
             break;
@@ -343,4 +343,25 @@ int16_t AP_MotorsTri::calc_yaw_radio_output(float yaw_input, float yaw_input_max
     }
 
     return ret;
+}
+
+/*
+  call vehicle supplied thrust compensation if set. This allows for
+  vehicle specific thrust compensation for motor arrangements such as
+  the forward motors tilting
+*/
+void AP_MotorsTri::thrust_compensation(void)
+{
+    if (_thrust_compensation_callback) {
+        // convert 3 thrust values into an array indexed by motor number
+        float thrust[4] { _thrust_right, _thrust_left, 0, _thrust_rear };
+
+        // apply vehicle supplied compensation function
+        _thrust_compensation_callback(thrust, 4);
+
+        // extract compensated thrust values
+        _thrust_right = thrust[0];
+        _thrust_left  = thrust[1];
+        _thrust_rear  = thrust[3];
+    }
 }

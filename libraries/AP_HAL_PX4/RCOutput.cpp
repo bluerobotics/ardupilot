@@ -165,6 +165,21 @@ void PX4RCOutput::set_freq_fd(int fd, uint32_t chmask, uint16_t freq_hz)
  */
 void PX4RCOutput::set_freq(uint32_t chmask, uint16_t freq_hz) 
 {
+    if (freq_hz > 50 && _output_mode == MODE_PWM_ONESHOT) {
+        // rate is irrelevent in oneshot
+        return;
+    }
+
+    // re-fetch servo count as it might have changed due to a change in BRD_PWM_COUNT
+    if (_pwm_fd != -1 && ioctl(_pwm_fd, PWM_SERVO_GET_COUNT, (unsigned long)&_servo_count) != 0) {
+        hal.console->printf("RCOutput: Unable to get servo count\n");        
+        return;
+    }
+    if (_alt_fd != -1 && ioctl(_alt_fd, PWM_SERVO_GET_COUNT, (unsigned long)&_alt_servo_count) != 0) {
+        hal.console->printf("RCOutput: Unable to get alt servo count\n");        
+        return;
+    }
+    
     // greater than 400 doesn't give enough room at higher periods for
     // the down pulse
     if (freq_hz > 400) {
@@ -194,7 +209,7 @@ void PX4RCOutput::enable_ch(uint8_t ch)
         return;
     }
     if (ch >= 8 && !(_enabled_channels & (1U<<ch))) {
-        // this is the first enable of an auxillary channel - setup
+        // this is the first enable of an auxiliary channel - setup
         // aux channels now. This delayed setup makes it possible to
         // use BRD_PWM_COUNT to setup the number of PWM channels.
         _init_alt_channels();
@@ -249,15 +264,42 @@ void PX4RCOutput::set_failsafe_pwm(uint32_t chmask, uint16_t period_us)
 
 bool PX4RCOutput::force_safety_on(void)
 {
-    int ret = ioctl(_pwm_fd, PWM_SERVO_SET_FORCE_SAFETY_ON, 0);
-    return (ret == OK);
+    _safety_state_request = AP_HAL::Util::SAFETY_DISARMED;
+    _safety_state_request_last_ms = 1;
+    return true;
 }
 
 void PX4RCOutput::force_safety_off(void)
 {
-    int ret = ioctl(_pwm_fd, PWM_SERVO_SET_FORCE_SAFETY_OFF, 0);
-    if (ret != OK) {
-        hal.console->printf("Failed to force safety off\n");
+    _safety_state_request = AP_HAL::Util::SAFETY_ARMED;
+    _safety_state_request_last_ms = 1;
+}
+
+void PX4RCOutput::force_safety_pending_requests(void)
+{
+    // check if there is a pending saftey_state change. If so (timer != 0) then set it.
+    if (_safety_state_request_last_ms != 0 &&
+            AP_HAL::millis() - _safety_state_request_last_ms >= 100) {
+        if (hal.util->safety_switch_state() == _safety_state_request) {
+            // current switch state matches request, stop attempting
+            _safety_state_request_last_ms = 0;
+        } else if (_safety_state_request == AP_HAL::Util::SAFETY_DISARMED) {
+            // current != requested, set it
+            ioctl(_pwm_fd, PWM_SERVO_SET_FORCE_SAFETY_ON, 0);
+            _safety_state_request_last_ms = AP_HAL::millis();
+        } else if (_safety_state_request == AP_HAL::Util::SAFETY_ARMED) {
+            // current != requested, set it
+            ioctl(_pwm_fd, PWM_SERVO_SET_FORCE_SAFETY_OFF, 0);
+            _safety_state_request_last_ms = AP_HAL::millis();
+        }
+    }
+}
+
+void PX4RCOutput::force_safety_no_wait(void)
+{
+    if (_safety_state_request_last_ms != 0) {
+        _safety_state_request_last_ms = 1;
+        force_safety_pending_requests();
     }
 }
 
@@ -501,6 +543,8 @@ void PX4RCOutput::_timer_tick(void)
          * sent from push() */
         _send_outputs();
     }
+
+    force_safety_pending_requests();
 }
 
 /*

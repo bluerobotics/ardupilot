@@ -45,9 +45,9 @@ enum aux_sw_func {
     AUXSW_SAVE_TRIM =            5, // save current position as level
     AUXSW_SAVE_WP =              7, // save mission waypoint or RTL if in auto mode
     AUXSW_CAMERA_TRIGGER =       9, // trigger camera servo or relay
-    AUXSW_SONAR =               10, // allow enabling or disabling sonar in flight which helps avoid surface tracking when you are far above the ground
-    AUXSW_FENCE =               11, // allow enabling or disabling fence in flight
-    AUXSW_RESETTOARMEDYAW =     12, // changes yaw to be same as when quad was armed
+	AUXSW_RANGEFINDER =         10, // allow enabling or disabling rangefinder in flight which helps avoid surface tracking when you are far above the ground
+	AUXSW_FENCE =               11, // allow enabling or disabling fence in flight
+	AUXSW_RESETTOARMEDYAW =     12, // changes yaw to be same as when quad was armed
     AUXSW_SUPERSIMPLE_MODE =    13, // change to simple mode in middle, super simple at top
     AUXSW_ACRO_TRAINER =        14, // low = disabled, middle = leveled, high = leveled and limited
     AUXSW_SPRAYER =             15, // enable/disable the crop sprayer
@@ -88,6 +88,7 @@ enum aux_sw_func {
 #define BLUEROV_FRAME 10
 #define VECTORED_FRAME 11
 #define VECTORED6DOF_FRAME 12
+#define SIMPLEROV_FRAME 13
 
 // HIL enumerations
 #define HIL_MODE_DISABLED               0
@@ -126,7 +127,9 @@ enum mode_reason_t {
     MODE_REASON_MISSION_END,
     MODE_REASON_THROTTLE_LAND_ESCAPE,
     MODE_REASON_FENCE_BREACH,
-	MODE_REASON_TERRAIN_FAILSAFE
+	MODE_REASON_TERRAIN_FAILSAFE,
+	MODE_REASON_BRAKE_TIMEOUT,
+	MODE_REASON_FLIP_COMPLETE
 };
 
 // Tuning enumeration
@@ -155,8 +158,8 @@ enum tuning_func {
     TUNING_DECLINATION =                38, // compass declination in radians
     TUNING_CIRCLE_RATE =                39, // circle turn rate in degrees (hard coded to about 45 degrees in either direction)
     TUNING_ACRO_YAW_KP =                40, // acro controller's P term.  converts pilot input to a desired roll, pitch or yaw rate
-    TUNING_SONAR_GAIN =                 41, // sonar gain
-    TUNING_EKF_VERTICAL_POS =           42, // EKF's baro vs accel (higher rely on accels more, baro impact is reduced).  Range should be 0.2 ~ 4.0?  2.0 is default
+	TUNING_RANGEFINDER_GAIN =           41, // rangefinder gain
+	TUNING_EKF_VERTICAL_POS =           42, // EKF's baro vs accel (higher rely on accels more, baro impact is reduced).  Range should be 0.2 ~ 4.0?  2.0 is default
     TUNING_EKF_HORIZONTAL_POS =         43, // EKF's gps vs accel (higher rely on accels more, gps impact is reduced).  Range should be 1.0 ~ 3.0?  1.5 is default
     TUNING_EKF_ACCEL_NOISE =            44, // EKF's accel noise (lower means trust accels more, gps & baro less).  Range should be 0.02 ~ 0.5  0.5 is default (but very robust at that level)
     TUNING_RC_FEEL_RP =                 45, // roll-pitch input smoothing
@@ -224,8 +227,8 @@ enum RTLState {
 
 // Alt_Hold states
 enum AltHoldModeState {
-    AltHold_Disarmed,
-    AltHold_MotorStop,
+    AltHold_MotorStopped,
+	AltHold_NotAutoArmed,
     AltHold_Takeoff,
     AltHold_Flying,
     AltHold_Landed
@@ -233,8 +236,8 @@ enum AltHoldModeState {
 
 // Loiter states
 enum LoiterModeState {
-    Loiter_Disarmed,
-    Loiter_MotorStop,
+    Loiter_MotorStopped,
+	Loiter_NotAutoArmed,
     Loiter_Takeoff,
     Loiter_Flying,
     Loiter_Landed
@@ -304,24 +307,18 @@ enum ThrowModeState {
 #define MASK_LOG_COMPASS                (1<<13)
 #define MASK_LOG_INAV                   (1<<14) // deprecated
 #define MASK_LOG_CAMERA                 (1<<15)
-#define MASK_LOG_WHEN_DISARMED          (1UL<<16)
 #define MASK_LOG_MOTBATT                (1UL<<17)
 #define MASK_LOG_IMU_FAST               (1UL<<18)
 #define MASK_LOG_IMU_RAW                (1UL<<19)
 #define MASK_LOG_ANY                    0xFFFF
 
 // DATA - event logging
-#define DATA_MAVLINK_FLOAT                  1
-#define DATA_MAVLINK_INT32                  2
-#define DATA_MAVLINK_INT16                  3
-#define DATA_MAVLINK_INT8                   4
 #define DATA_AP_STATE                       7
 #define DATA_SYSTEM_TIME_SET                8
 #define DATA_INIT_SIMPLE_BEARING            9
 #define DATA_ARMED                          10
 #define DATA_DISARMED                       11
 #define DATA_AUTO_ARMED                     15
-#define DATA_TAKEOFF                        16
 #define DATA_LAND_COMPLETE_MAYBE            17
 #define DATA_LAND_COMPLETE                  18
 #define DATA_NOT_LANDED                     28
@@ -342,7 +339,6 @@ enum ThrowModeState {
 #define DATA_AUTOTUNE_SAVEDGAINS            37
 #define DATA_SAVE_TRIM                      38
 #define DATA_SAVEWP_ADD_WP                  39
-#define DATA_SAVEWP_CLEAR_MISSION_RTL       40
 #define DATA_FENCE_ENABLE                   41
 #define DATA_FENCE_DISABLE                  42
 #define DATA_ACRO_TRAINER_DISABLED          43
@@ -350,7 +346,6 @@ enum ThrowModeState {
 #define DATA_ACRO_TRAINER_LIMITED           45
 #define DATA_EPM_GRAB                       46
 #define DATA_EPM_RELEASE                    47
-#define DATA_EPM_NEUTRAL                    48  // deprecated
 #define DATA_PARACHUTE_DISABLED             49
 #define DATA_PARACHUTE_ENABLED              50
 #define DATA_PARACHUTE_RELEASED             51
@@ -420,6 +415,7 @@ enum ThrowModeState {
 #define ERROR_CODE_FAILED_TO_SET_DESTINATION    2
 #define ERROR_CODE_RESTARTED_RTL            3
 #define ERROR_CODE_FAILED_CIRCLE_INIT       4
+#define ERROR_CODE_DEST_OUTSIDE_FENCE       5
 
 // parachute failed to deploy because of low altitude or landed
 #define ERROR_CODE_PARACHUTE_TOO_LOW        2
@@ -473,3 +469,4 @@ enum ThrowModeState {
 // for PILOT_THR_BHV parameter
 #define THR_BEHAVE_FEEDBACK_FROM_MID_STICK (1<<0)
 #define THR_BEHAVE_HIGH_THROTTLE_CANCELS_LAND (1<<1)
+#define THR_BEHAVE_DISARM_ON_LAND_DETECT (1<<2)

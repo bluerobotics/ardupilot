@@ -4,7 +4,7 @@
 
 #include <AP_HAL/AP_HAL.h>
 #include <RC_Channel/RC_Channel.h>
-#include <GCS_MAVLink/include/mavlink/v1.0/checksum.h>
+#include <GCS_MAVLink/include/mavlink/v2.0/checksum.h>
 
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
@@ -97,7 +97,7 @@ void RC_UART::loop()
             rc[i].enable_out();
             enable_mask |= 1U<<i;
         }
-        rc[i].radio_out = u.period[i];
+        rc[i].set_radio_out(u.period[i]);
         rc[i].output();
     }
 

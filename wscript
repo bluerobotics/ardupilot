@@ -19,24 +19,26 @@ from waflib import Build, ConfigSet, Context, Utils
 # pastable. Add the 'export waf="$PWD/waf"' trick to be copy-pastable
 # as well.
 
-# TODO: replace defines with the use of a generated config.h file
+# TODO: replace defines with the use of the generated ap_config.h file
 # this makes recompilation at least when defines change. which might
 # be sufficient.
-
-# TODO: set git version as part of build preparation.
 
 def init(ctx):
     env = ConfigSet.ConfigSet()
     try:
-        env.load('build/c4che/_cache.py')
+        p = os.path.join(Context.out_dir, Build.CACHE_DIR, Build.CACHE_SUFFIX)
+        env.load(p)
     except:
+        return
+
+    if 'VARIANT' not in env:
         return
 
     # define the variant build commands according to the board
     for c in Context.classes:
         if not issubclass(c, Build.BuildContext):
             continue
-        c.variant = env.BOARD
+        c.variant = env.VARIANT
 
 def options(opt):
     opt.load('compiler_cxx compiler_c waf_unit_test python')
@@ -48,35 +50,53 @@ def options(opt):
     }
 
     opt.load('ardupilotwaf')
+    opt.load('build_summary')
 
     g = opt.ap_groups['configure']
+
     boards_names = boards.get_boards_names()
     g.add_option('--board',
-                   action='store',
-                   choices=boards_names,
-                   default='sitl',
-                   help='Target board to build, choices are %s' % boards_names)
+        action='store',
+        choices=boards_names,
+        default='sitl',
+        help='Target board to build, choices are %s.' % boards_names)
 
     g.add_option('--no-submodule-update',
-                 dest='submodule_update',
-                 action='store_false',
-                 default=True,
-                 help='Don\'t update git submodules. Useful for building ' +
-                      'with submodules at specific revisions.')
+        dest='submodule_update',
+        action='store_false',
+        default=True,
+        help='''
+Don't update git submodules. Useful for building with submodules at specific
+revisions.
+''')
 
     g.add_option('--enable-benchmarks',
-                 action='store_true',
-                 default=False,
-                 help='Enable benchmarks')
+        action='store_true',
+        default=False,
+        help='Enable benchmarks.')
+
+    g.add_option('--debug',
+        action='store_true',
+        default=False,
+        help='Configure as debug variant.')
 
 def configure(cfg):
     cfg.env.BOARD = cfg.options.board
-    # use a different variant for each board
-    cfg.setenv(cfg.env.BOARD)
+    cfg.env.DEBUG = cfg.options.debug
+
+    cfg.env.VARIANT = cfg.env.BOARD
+    if cfg.env.DEBUG:
+        cfg.env.VARIANT += '-debug'
+    cfg.setenv(cfg.env.VARIANT)
+
+    cfg.env.BOARD = cfg.options.board
+    cfg.env.DEBUG = cfg.options.debug
+
+    # Allow to differentiate our build from the make build
+    cfg.define('WAF_BUILD', 1)
 
     cfg.msg('Setting board to', cfg.options.board)
-    cfg.env.BOARD = cfg.options.board
-    boards.get_board(cfg.env.BOARD).configure(cfg)
+    cfg.get_board().configure(cfg)
 
     cfg.load('clang_compilation_database')
     cfg.load('waf_unit_test')
@@ -86,6 +106,7 @@ def configure(cfg):
         cfg.load('gbenchmark')
     cfg.load('gtest')
     cfg.load('static_linking')
+    cfg.load('build_summary')
 
     cfg.start_msg('Benchmarks')
     if cfg.env.HAS_GBENCHMARK:
@@ -150,7 +171,7 @@ def _build_dynamic_sources(bld):
     bld(
         features='mavgen',
         source='modules/mavlink/message_definitions/v1.0/ardupilotmega.xml',
-        output_dir='libraries/GCS_MAVLink/include/mavlink/v1.0/',
+        output_dir='libraries/GCS_MAVLink/include/mavlink/v2.0/',
         name='mavlink',
         # this below is not ideal, mavgen tool should set this, but that's not
         # currently possible
@@ -159,6 +180,10 @@ def _build_dynamic_sources(bld):
             bld.bldnode.make_node('libraries/GCS_MAVLink').abspath(),
         ],
     )
+
+    bld.env.prepend_value('INCLUDES', [
+        bld.bldnode.abspath(),
+    ])
 
 def _build_common_taskgens(bld):
     # NOTE: Static library with vehicle set to UNKNOWN, shared by all
@@ -221,11 +246,15 @@ def _build_recursion(bld):
     for d in dirs_to_recurse:
         bld.recurse(d)
 
-def build(bld):
-    config_header = Utils.h_file(bld.bldnode.make_node('ap_config.h').abspath())
+def _write_version_header(tsk):
+    bld = tsk.generator.bld
+    return bld.write_version_header(tsk.outputs[0].abspath())
 
-    bld.env.CCDEPS = config_header
-    bld.env.CXXDEPS = config_header
+
+def build(bld):
+    config_hash = Utils.h_file(bld.bldnode.make_node('ap_config.h').abspath())
+    bld.env.CCDEPS = config_hash
+    bld.env.CXXDEPS = config_hash
 
     bld.post_mode = Build.POST_LAZY
 
@@ -242,10 +271,20 @@ def build(bld):
     _build_dynamic_sources(bld)
 
     bld.add_group('build')
-    boards.get_board(bld.env.BOARD).build(bld)
+    bld.get_board().build(bld)
     _build_common_taskgens(bld)
 
     _build_recursion(bld)
+
+    bld(
+        name='ap_version',
+        target='ap_version.h',
+        vars=['AP_VERSION_ITEMS'],
+        rule=_write_version_header,
+        group='dynamic_sources',
+    )
+
+    bld.load('build_summary')
 
 ardupilotwaf.build_command('check',
     program_group_list='all',

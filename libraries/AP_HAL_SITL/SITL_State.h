@@ -51,6 +51,10 @@ public:
         return _base_port;
     }
 
+    bool use_rtscts(void) const {
+        return _use_rtscts;
+    }
+    
     // simulated airspeed, sonar and battery monitor
     uint16_t sonar_pin_value;    // pin 0
     uint16_t airspeed_pin_value; // pin 1
@@ -147,7 +151,9 @@ private:
     Scheduler *_scheduler;
     Compass *_compass;
     OpticalFlow *_optical_flow;
+#if AP_TERRAIN_AVAILABLE
     AP_Terrain *_terrain;
+#endif
 
     SocketAPM _sitl_rc_in{true};
     SITL::SITL *_sitl;
@@ -157,6 +163,8 @@ private:
 
     bool _synthetic_clock_mode;
 
+    bool _use_rtscts;
+    
     const char *_fdm_address;
 
     // delay buffer variables

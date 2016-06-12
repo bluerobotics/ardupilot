@@ -1,6 +1,5 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#include "Sub.h"
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,15 +14,17 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-/*
-  constructor for main Sub class
- */
+#include "Sub.h"
+#include "version.h"
 
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
+/*
+  constructor for main Sub class
+ */
 Sub::Sub(void) :
+	DataFlash{FIRMWARE_STRING},
     flight_modes(&g.flight_mode1),
-    sonar_enabled(true),
     mission(ahrs, 
             FUNCTOR_BIND_MEMBER(&Sub::start_command, bool, const AP_Mission::Mission_Command &),
             FUNCTOR_BIND_MEMBER(&Sub::verify_command_callback, bool, const AP_Mission::Mission_Command &),
@@ -54,9 +55,7 @@ Sub::Sub(void) :
     frsky_telemetry(ahrs, battery),
 #endif
     climb_rate(0),
-    sonar_alt(0),
-    sonar_alt_health(0),
-    target_sonar_alt(0.0f),
+    target_rangefinder_alt(0.0f),
     baro_alt(0),
     baro_climbrate(0.0f),
     land_accel_ef_filter(LAND_DETECTOR_ACCEL_LPF_CUTOFF),
@@ -104,7 +103,7 @@ Sub::Sub(void) :
     terrain(ahrs, mission, rally),
 #endif
 #if PRECISION_LANDING == ENABLED
-    precland(ahrs, inertial_nav, g.pi_precland, MAIN_LOOP_SECONDS),
+    precland(ahrs, inertial_nav),
 #endif
     in_mavlink_delay(false),
     gcs_out_of_time(false),

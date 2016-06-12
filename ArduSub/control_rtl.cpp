@@ -13,7 +13,7 @@
 bool Sub::rtl_init(bool ignore_checks)
 {
     if (position_ok() || ignore_checks) {
-    	rtl_build_path(true);
+    	rtl_build_path(!failsafe.terrain);
         rtl_climb_start();
         return true;
     }else{
@@ -97,7 +97,7 @@ void Sub::rtl_climb_start()
     wp_nav.wp_and_spline_init();
 
     // RTL_SPEED == 0 means use WPNAV_SPEED
-    if (!is_zero(g.rtl_speed_cms)) {
+    if (g.rtl_speed_cms != 0) {
         wp_nav.set_speed_xy(g.rtl_speed_cms);
     }
 
@@ -148,7 +148,7 @@ void Sub::rtl_climb_return_run()
     float target_yaw_rate = 0;
     if (!failsafe.radio) {
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
         if (!is_zero(target_yaw_rate)) {
             set_auto_yaw_mode(AUTO_YAW_HOLD);
         }
@@ -210,7 +210,7 @@ void Sub::rtl_loiterathome_run()
     float target_yaw_rate = 0;
     if (!failsafe.radio) {
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
         if (!is_zero(target_yaw_rate)) {
             set_auto_yaw_mode(AUTO_YAW_HOLD);
         }
@@ -297,12 +297,12 @@ void Sub::rtl_descent_run()
             update_simple_mode();
 
             // process pilot's roll and pitch input
-            roll_control = channel_roll->control_in;
-            pitch_control = channel_pitch->control_in;
+            roll_control = channel_roll->get_control_in();
+            pitch_control = channel_pitch->get_control_in();
         }
 
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
     }
 
     // set motors to full range
@@ -385,12 +385,12 @@ void Sub::rtl_land_run()
             update_simple_mode();
 
             // process pilot's roll and pitch input
-            roll_control = channel_roll->control_in;
-            pitch_control = channel_pitch->control_in;
+            roll_control = channel_roll->get_control_in();
+            pitch_control = channel_pitch->get_control_in();
         }
 
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
     }
 
     // set motors to full range

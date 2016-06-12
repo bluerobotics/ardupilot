@@ -76,7 +76,7 @@ char (&_ARRAY_SIZE_HELPER(T (&_arr)[0]))[0];
 /// bit 2: Direction of loiter command      0: Clockwise	1: Counter-Clockwise
 /// bit 3: Req.to hit WP.alt to continue    0: No,          1: Yes
 /// bit 4: Relative to Home					0: No,          1: Yes
-/// bit 5:
+/// bit 5: Loiter crosstrack reference      0: WP center    1: Tangent exit point
 /// bit 6:
 /// bit 7: Move to next Command             0: YES,         1: Loiter until commanded
 
@@ -88,6 +88,7 @@ struct PACKED Location_Option_Flags {
     uint8_t loiter_ccw   : 1;           // 0 if clockwise, 1 if counter clockwise
     uint8_t terrain_alt  : 1;           // this altitude is above terrain
     uint8_t origin_alt   : 1;           // this altitude is above ekf origin
+    uint8_t loiter_xtrack : 1;          // 0 to crosstrack from center of waypoint, 1 to crosstrack from tangent exit location
 };
 
 struct PACKED Location {
@@ -100,7 +101,7 @@ struct PACKED Location {
     // storage cost per mission item at 15 bytes, and allows mission
     // altitudes of up to +/- 83km
     int32_t alt:24;                                     ///< param 2 - Altitude in centimeters (meters * 100)
-    int32_t lat;                                        ///< param 3 - Lattitude * 10**7
+    int32_t lat;                                        ///< param 3 - Latitude * 10**7
     int32_t lng;                                        ///< param 4 - Longitude * 10**7
 };
 
@@ -130,7 +131,6 @@ enum HomeState {
 #define AP_PRODUCT_ID_PX4               0x04    // PX4 on NuttX
 #define AP_PRODUCT_ID_PX4_V2            0x05    // PX4 FMU2 on NuttX
 #define AP_PRODUCT_ID_PX4_V4            0x06    // PX4 FMU4 on NuttX
-#define AP_PRODUCT_ID_FLYMAPLE          0x100   // Flymaple with ITG3205, ADXL345, HMC5883, BMP085
 #define AP_PRODUCT_ID_L3G4200D          0x101   // Linux with L3G4200D and ADXL345
 #define AP_PRODUCT_ID_PIXHAWK_FIRE_CAPE 0x102   // Linux with the PixHawk Fire Cape
 #define AP_PRODUCT_ID_MPU9250           0x103   // MPU9250
@@ -144,5 +144,14 @@ bool is_bounded_int32(int32_t value, int32_t lower_bound, int32_t upper_bound);
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_QURT
 #include <AP_HAL_QURT/replace.h>
+#endif
+
+/*
+  useful debugging macro for SITL
+ */
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+#define SITL_printf(fmt, args ...) do { ::printf("%s(%u): " fmt, __FILE__, __LINE__, ##args); } while(0)
+#else
+#define SITL_printf(fmt, args ...)
 #endif
 

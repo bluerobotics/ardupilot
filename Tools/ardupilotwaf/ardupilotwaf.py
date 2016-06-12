@@ -5,7 +5,9 @@ from __future__ import print_function
 from waflib import Logs, Options, Utils
 from waflib.Build import BuildContext
 from waflib.Configure import conf
-import os.path
+from waflib.TaskGen import before_method, feature
+import os.path, os
+from collections import OrderedDict
 
 SOURCE_EXTS = [
     '*.S',
@@ -49,6 +51,10 @@ COMMON_VEHICLE_DEPENDENT_LIBRARIES = [
     'GCS_MAVLink',
     'RC_Channel',
     'StorageManager',
+    'AP_Tuning',
+    'AP_RPM',
+    'AP_RSSI',
+    'AP_Mount',
 ]
 
 def _get_legacy_defines(sketch_name):
@@ -66,7 +72,7 @@ IGNORED_AP_LIBRARIES = [
 @conf
 def ap_get_all_libraries(bld):
     libraries = []
-    for lib_node in bld.srcnode.ant_glob('libraries/*', dir=True):
+    for lib_node in bld.srcnode.ant_glob('libraries/*', dir=True, src=False):
         name = lib_node.name
         if name in IGNORED_AP_LIBRARIES:
             continue
@@ -136,7 +142,7 @@ def ap_program(bld,
 @conf
 def ap_example(bld, **kw):
     kw['program_groups'] = 'examples'
-    ap_program(bld, **kw)
+    ap_program(bld, use_legacy_defines=False, **kw)
 
 # NOTE: Code in libraries/ is compiled multiple times. So ensure each
 # compilation is independent by providing different index for each.
@@ -149,6 +155,10 @@ def _get_next_idx():
     LAST_IDX += 1
     return LAST_IDX
 
+def unique_list(items):
+    '''remove duplicate elements from a list while maintaining ordering'''
+    return list(OrderedDict.fromkeys(items))
+
 @conf
 def ap_stlib(bld, **kw):
     if 'name' not in kw:
@@ -159,7 +169,7 @@ def ap_stlib(bld, **kw):
         bld.fatal('Missing libraries for ap_stlib')
 
     sources = []
-    libraries = kw['libraries'] + bld.env.AP_LIBRARIES
+    libraries = unique_list(kw['libraries'] + bld.env.AP_LIBRARIES)
 
     for lib_name in libraries:
         lib_node = bld.srcnode.find_dir('libraries/' + lib_name)
@@ -176,6 +186,24 @@ def ap_stlib(bld, **kw):
     kw['idx'] = _get_next_idx()
 
     bld.stlib(**kw)
+
+_created_program_dirs = set()
+@feature('cxxstlib', 'cxxprogram')
+@before_method('process_rule')
+def ap_create_program_dir(self):
+    if not hasattr(self, 'program_dir'):
+        return
+    if self.program_dir in _created_program_dirs:
+        return
+    self.bld.bldnode.make_node(self.program_dir).mkdir()
+    _created_program_dirs.add(self.program_dir)
+
+@feature('cxxstlib')
+@before_method('process_rule')
+def ap_stlib_target(self):
+    if self.target.startswith('#'):
+        self.target = self.target[1:]
+    self.target = '#%s' % os.path.join('lib', self.target)
 
 @conf
 def ap_find_tests(bld, use=[]):
@@ -203,6 +231,20 @@ def ap_find_tests(bld, use=[]):
             use_legacy_defines=False,
             cxxflags=['-Wno-undef'],
         )
+
+_versions = []
+
+@conf
+def ap_version_append_str(ctx, k, v):
+    ctx.env['AP_VERSION_ITEMS'] += [(k, '"{}"'.format(os.environ.get(k, v)))]
+
+@conf
+def write_version_header(ctx, tgt):
+    with open(tgt, 'w') as f:
+        print('#pragma once\n', file=f)
+
+        for k, v in ctx.env['AP_VERSION_ITEMS']:
+            print('#define {} {}'.format(k, v), file=f)
 
 @conf
 def ap_find_benchmarks(bld, use=[]):
@@ -324,25 +366,29 @@ def _select_programs_from_group(bld):
 
 def options(opt):
     g = opt.ap_groups['build']
+
     g.add_option('--program-group',
         action='append',
         default=[],
-        help='Select all programs that go in <PROGRAM_GROUP>/ for the ' +
-             'build. Example: `waf --program-group examples` builds all ' +
-             'examples. The special group "all" selects all programs.',
-    )
+        help='''
+Select all programs that go in <PROGRAM_GROUP>/ for the build. Example: `waf
+--program-group examples` builds all examples. The special group "all" selects
+all programs.
+''')
 
     g.add_option('--upload',
         action='store_true',
-        help='Upload applicable targets to a connected device. Not all ' +
-             'platforms may support this. Example: `waf copter --upload` ' +
-             'means "build arducopter and upload it to my board".',
-    )
+        help='''
+Upload applicable targets to a connected device. Not all platforms may support
+this. Example: `waf copter --upload` means "build arducopter and upload it to
+my board".
+''')
 
     g = opt.ap_groups['check']
+
     g.add_option('--check-verbose',
-                 action='store_true',
-                 help='Output all test programs')
+        action='store_true',
+        help='Output all test programs.')
 
 
 def build(bld):

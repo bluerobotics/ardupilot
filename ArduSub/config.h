@@ -47,11 +47,6 @@
  #define HIL_MODE        HIL_MODE_DISABLED
 #endif
 
-#if HIL_MODE != HIL_MODE_DISABLED       // we are in HIL mode
- #undef CONFIG_SONAR
- #define CONFIG_SONAR DISABLED
-#endif
-
 #define MAGNETOMETER ENABLED
 
 // run at 400Hz on all systems
@@ -72,6 +67,8 @@
  # define FRAME_CONFIG_STRING "ROV_VECTORED_FRAME"
 #elif FRAME_CONFIG == VECTORED6DOF_FRAME
  # define FRAME_CONFIG_STRING "ROV_VECTORED6DOF_FRAME"
+#elif FRAME_CONFIG == SIMPLEROV_FRAME
+ # define FRAME_CONFIG_STRING "ROV_SIMPLEROV_FRAME"
 #else
  # define FRAME_CONFIG_STRING "UNKNOWN"
 #endif
@@ -88,35 +85,35 @@
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
-// Sonar
+// Rangefinder
 //
 
-#ifndef CONFIG_SONAR
- # define CONFIG_SONAR ENABLED
+#ifndef RANGEFINDER_ENABLED
+ # define RANGEFINDER_ENABLED ENABLED
 #endif
 
-#ifndef SONAR_ALT_HEALTH_MAX
- # define SONAR_ALT_HEALTH_MAX 3            // number of good reads that indicates a healthy sonar
+#ifndef RANGEFINDER_HEALTH_MAX
+ # define RANGEFINDER_HEALTH_MAX 3          // number of good reads that indicates a healthy rangefinder
 #endif
 
-#ifndef SONAR_RELIABLE_DISTANCE_PCT
- # define SONAR_RELIABLE_DISTANCE_PCT 0.60f // we trust the sonar out to 60% of it's maximum range
-#endif
-
-#ifndef SONAR_GAIN_DEFAULT
- # define SONAR_GAIN_DEFAULT 0.8f           // gain for controlling how quickly sonar range adjusts target altitude (lower means slower reaction)
+#ifndef RANGEFINDER_GAIN_DEFAULT
+ # define RANGEFINDER_GAIN_DEFAULT 0.8f     // gain for controlling how quickly rangefinder range adjusts target altitude (lower means slower reaction)
 #endif
 
 #ifndef THR_SURFACE_TRACKING_VELZ_MAX
- # define THR_SURFACE_TRACKING_VELZ_MAX 150 // max vertical speed change while surface tracking with sonar
+ # define THR_SURFACE_TRACKING_VELZ_MAX 150 // max vertical speed change while surface tracking with rangefinder
 #endif
 
-#ifndef SONAR_TIMEOUT_MS
- # define SONAR_TIMEOUT_MS  1000            // desired sonar alt will reset to current sonar alt after this many milliseconds without a good sonar alt
+#ifndef RANGEFINDER_TIMEOUT_MS
+ # define RANGEFINDER_TIMEOUT_MS  1000      // desired rangefinder alt will reset to current rangefinder alt after this many milliseconds without a good rangefinder alt
 #endif
 
-#ifndef SONAR_TILT_CORRECTION               // by disable tilt correction for use of range finder data by EKF
- # define SONAR_TILT_CORRECTION DISABLED
+#ifndef RANGEFINDER_WPNAV_FILT_HZ
+ # define RANGEFINDER_WPNAV_FILT_HZ   0.25f // filter frequency for rangefinder altitude provided to waypoint navigation class
+#endif
+
+#ifndef RANGEFINDER_TILT_CORRECTION         // by disable tilt correction for use of range finder data by EKF
+ # define RANGEFINDER_TILT_CORRECTION ENABLED
 #endif
 
 
@@ -224,7 +221,7 @@
  #ifndef COMPASS_OFFSETS_MAX
   # define COMPASS_OFFSETS_MAX          600         // PX4 onboard compass has high offsets
  #endif
-#else   // SITL, FLYMAPLE, etc
+#else   // SITL, etc
  #ifndef COMPASS_OFFSETS_MAX
   # define COMPASS_OFFSETS_MAX          500
  #endif
@@ -420,8 +417,8 @@
  # define RTL_ABS_MIN_CLIMB         250     // absolute minimum initial climb
 #endif
 
-#ifndef RTL_CONE_SLOPE
- # define RTL_CONE_SLOPE            3.0f    // slope of RTL cone (height / distance). 0 = No cone
+#ifndef RTL_CONE_SLOPE_DEFAULT
+ # define RTL_CONE_SLOPE_DEFAULT    3.0f    // slope of RTL cone (height / distance). 0 = No cone
 #endif
 
 #ifndef RTL_MIN_CONE_SLOPE
@@ -630,14 +627,4 @@
 //use this to completely disable FRSKY TELEM
 #ifndef FRSKY_TELEM_ENABLED
   #  define FRSKY_TELEM_ENABLED          ENABLED
-#endif
-
-/*
-  build a firmware version string.
-  GIT_VERSION comes from Makefile builds
-*/
-#ifndef GIT_VERSION
-#define FIRMWARE_STRING THISFIRMWARE
-#else
-#define FIRMWARE_STRING THISFIRMWARE " (" GIT_VERSION ")"
 #endif

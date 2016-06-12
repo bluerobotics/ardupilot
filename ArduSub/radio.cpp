@@ -18,12 +18,12 @@ void Sub::default_dead_zones()
 
 void Sub::init_rc_in()
 {
-    channel_roll     = RC_Channel::rc_channel(rcmap.roll()-1);
-    channel_pitch    = RC_Channel::rc_channel(rcmap.pitch()-1);
-    channel_throttle = RC_Channel::rc_channel(rcmap.throttle()-1);
-    channel_yaw      = RC_Channel::rc_channel(rcmap.yaw()-1);
-    channel_forward  = RC_Channel::rc_channel(rcmap.forward()-1);
-    channel_lateral  = RC_Channel::rc_channel(rcmap.lateral()-1);
+	channel_pitch    = RC_Channel::rc_channel(0);
+    channel_roll     = RC_Channel::rc_channel(1);
+    channel_throttle = RC_Channel::rc_channel(2);
+    channel_yaw      = RC_Channel::rc_channel(3);
+    channel_forward  = RC_Channel::rc_channel(5);
+    channel_lateral  = RC_Channel::rc_channel(6);
 
     // set rc channel ranges
     channel_roll->set_angle(ROLL_PITCH_INPUT_MAX);
@@ -67,6 +67,10 @@ void Sub::init_rc_out()
     // we want the input to be scaled correctly
     channel_throttle->set_range_out(0,1000);
 
+    // setup correct scaling for ESCs like the UAVCAN PX4ESC which
+    // take a proportion of speed.
+    hal.rcout->set_esc_scaling(channel_throttle->get_radio_min(), channel_throttle->get_radio_max());
+
     // check if we should enter esc calibration mode
     esc_calibration_startup_check();
 
@@ -78,10 +82,6 @@ void Sub::init_rc_out()
 
     // refresh auxiliary channel to function map
     RC_Channel_aux::update_aux_servo_function();
-
-    // setup correct scaling for ESCs like the UAVCAN PX4ESC which
-    // take a proportion of speed. 
-    hal.rcout->set_esc_scaling(channel_throttle->radio_min, channel_throttle->radio_max);
 }
 
 // enable_motor_output() - enable and output lowest possible value to motors
@@ -101,8 +101,8 @@ void Sub::read_radio()
         ap.new_radio_frame = true;
         RC_Channel::set_pwm_all();
 
-        set_throttle_and_failsafe(channel_throttle->radio_in);
-        set_throttle_zero_flag(channel_throttle->control_in);
+        set_throttle_and_failsafe(channel_throttle->get_radio_in());
+        set_throttle_zero_flag(channel_throttle->get_control_in());
 
         // flag we must have an rc receiver attached
         if (!failsafe.rc_override_active) {
@@ -116,7 +116,7 @@ void Sub::read_radio()
         radio_passthrough_to_motors();
 
         float dt = (tnow_ms - last_update_ms)*1.0e-3f;
-        rc_throttle_control_in_filter.apply(g.rc_3.control_in, dt);
+        rc_throttle_control_in_filter.apply(g.rc_3.get_control_in(), dt);
         last_update_ms = tnow_ms;
     }else{
         uint32_t elapsed = tnow_ms - last_update_ms;
@@ -195,5 +195,5 @@ void Sub::set_throttle_zero_flag(int16_t throttle_control)
 // pass pilot's inputs to motors library (used to allow wiggling servos while disarmed on heli, single, coax copters)
 void Sub::radio_passthrough_to_motors()
 {
-    motors.set_radio_passthrough(channel_roll->control_in/1000.0f, channel_pitch->control_in/1000.0f, channel_throttle->control_in/1000.0f, channel_yaw->control_in/1000.0f);
+    motors.set_radio_passthrough(channel_roll->get_control_in()/1000.0f, channel_pitch->get_control_in()/1000.0f, channel_throttle->get_control_in()/1000.0f, channel_yaw->get_control_in()/1000.0f);
 }

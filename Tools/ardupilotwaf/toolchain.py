@@ -13,10 +13,12 @@ Example::
 """
 
 from waflib import Errors, Context, Utils
+from waflib.Configure import conf
 from waflib.Tools import compiler_c, compiler_cxx
 from waflib.Tools import clang, clangxx, gcc, gxx
 
 import os
+import re
 
 def _set_toolchain_prefix_wrapper(tool_module, var, compiler_names):
     original_configure = tool_module.configure
@@ -116,6 +118,20 @@ def _filter_supported_cxx_compilers(*compilers):
         l = compiler_cxx.cxx_compiler[k]
         compiler_cxx.cxx_compiler[k] = [c for c in l if c in compilers]
 
+@conf
+def find_toolchain_program(cfg, filename, **kw):
+    filename = Utils.to_list(filename)
+
+    if not kw.get('var', ''):
+        # just copy from the original implementation
+        kw['var'] = re.sub(r'[-.]', '_', filename[0].upper())
+
+    if cfg.env.TOOLCHAIN != 'native':
+        for i, name in enumerate(filename):
+            filename[i] = '%s-%s' % (cfg.env.TOOLCHAIN, name)
+
+    return cfg.find_program(filename, **kw)
+
 def configure(cfg):
     if cfg.env.TOOLCHAIN == 'native':
         cfg.load('compiler_cxx compiler_c')
@@ -125,6 +141,7 @@ def configure(cfg):
     _filter_supported_cxx_compilers('g++', 'clang++')
 
     cfg.env.AR = cfg.env.TOOLCHAIN + '-ar'
+    cfg.env.PKGCONFIG = cfg.env.TOOLCHAIN + '-pkg-config'
     cfg.msg('Using toolchain', cfg.env.TOOLCHAIN)
     cfg.load('compiler_cxx compiler_c')
 

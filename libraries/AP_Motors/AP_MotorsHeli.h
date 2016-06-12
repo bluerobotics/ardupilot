@@ -98,7 +98,7 @@ public:
     uint8_t get_rsc_mode() const { return _rsc_mode; }
 
     // get_rsc_setpoint - gets contents of _rsc_setpoint parameter (0~1)
-    float get_rsc_setpoint() const { return _rsc_setpoint; }
+    float get_rsc_setpoint() const { return _rsc_setpoint / 1000.0f; }
 
     // set_desired_rotor_speed - sets target rotor speed as a number from 0 ~ 1
     virtual void set_desired_rotor_speed(float desired_speed) = 0;
@@ -186,7 +186,7 @@ protected:
     AP_Int16        _cyclic_max;                // Maximum cyclic angle of the swash plate in centi-degrees
     AP_Int16        _collective_min;            // Lowest possible servo position for the swashplate
     AP_Int16        _collective_max;            // Highest possible servo position for the swashplate
-    AP_Int16        _collective_mid;            // Swash servo position corresponding to zero collective pitch (or zero lift for Assymetrical blades)
+    AP_Int16        _collective_mid;            // Swash servo position corresponding to zero collective pitch (or zero lift for Asymmetrical blades)
     AP_Int8         _servo_mode;              // Pass radio inputs directly to servos during set-up through mission planner
     AP_Int16        _rsc_setpoint;              // rotor speed when RSC mode is set to is enabledv
     AP_Int8         _rsc_mode;                  // Which main rotor ESC control mode is active

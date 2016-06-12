@@ -10,6 +10,7 @@
  *  BLUEROV_FRAME
  *  VECTORED_FRAME
  *  VECTORED6DOF_FRAME
+ *  SIMPLEROV_FRAME
  */
 
 // uncomment the lines below to disable features (flash sizes listed are for APM2 boards and will underestimate savings on Pixhawk and other boards)
@@ -18,7 +19,7 @@
 #define AUTOTUNE_ENABLED      DISABLED            // disable the auto tune functionality to save 7k of flash
 //#define AC_FENCE              DISABLED            // disable fence to save 2k of flash
 //#define CAMERA                DISABLED            // disable camera trigger to save 1k of flash
-//#define CONFIG_SONAR          DISABLED            // disable sonar to save 1k of flash
+//#define RANGEFINDER_ENABLED   DISABLED            // disable rangefinder to save 1k of flash
 #define POSHOLD_ENABLED       DISABLED            // disable PosHold flight mode to save 4.5k of flash
 #define AC_RALLY              DISABLED            // disable rally points library (must also disable terrain which relies on rally)
 #define AC_TERRAIN            DISABLED            // disable terrain library

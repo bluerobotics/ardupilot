@@ -20,7 +20,7 @@
 #define WPNAV_LOITER_ACCEL_MIN           25.0f      // minimum acceleration in loiter mode
 #define WPNAV_LOITER_JERK_MAX_DEFAULT  1000.0f      // maximum jerk in cm/s/s/s in loiter mode
 
-#define WPNAV_WP_SPEED                  500.0f      // default horizontal speed betwen waypoints in cm/s
+#define WPNAV_WP_SPEED                  500.0f      // default horizontal speed between waypoints in cm/s
 #define WPNAV_WP_SPEED_MIN              100.0f      // minimum horizontal speed between waypoints in cm/s
 #define WPNAV_WP_TRACK_SPEED_MIN         50.0f      // minimum speed along track of the target point the vehicle is chasing in cm/s (used as target slows down before reaching destination)
 #define WPNAV_WP_RADIUS                 200.0f      // default waypoint radius in cm
@@ -28,7 +28,7 @@
 #define WPNAV_WP_SPEED_UP               250.0f      // default maximum climb velocity
 #define WPNAV_WP_SPEED_DOWN             150.0f      // default maximum descent velocity
 
-#define WPNAV_WP_ACCEL_Z_DEFAULT        100.0f      // default vertical acceleration betwen waypoints in cm/s/s
+#define WPNAV_WP_ACCEL_Z_DEFAULT        100.0f      // default vertical acceleration between waypoints in cm/s/s
 
 #define WPNAV_LEASH_LENGTH_MIN          100.0f      // minimum leash lengths in cm
 
@@ -39,6 +39,8 @@
 #define WPNAV_LOITER_ACTIVE_TIMEOUT_MS     200      // loiter controller is considered active if it has been called within the past 200ms (0.2 seconds)
 
 #define WPNAV_YAW_DIST_MIN                 200      // minimum track length which will lead to target yaw being updated to point at next waypoint.  Under this distance the yaw target will be frozen at the current heading
+
+#define WPNAV_RANGEFINDER_FILT_Z         0.25f      // range finder distance filtered at 0.25hz
 
 class AC_WPNav
 {
@@ -56,6 +58,9 @@ public:
 
     /// provide pointer to terrain database
     void set_terrain(AP_Terrain* terrain_ptr) { _terrain = terrain_ptr; }
+
+    /// provide rangefinder altitude
+    void set_rangefinder_alt(bool use, bool healthy, float alt_cm) { _rangefinder_use = use; _rangefinder_healthy = healthy; _rangefinder_alt_cm = alt_cm; }
 
     ///
     /// loiter controller
@@ -356,4 +361,7 @@ protected:
     // terrain following variables
     bool        _terrain_alt = false;   // true if origin and destination.z are alt-above-terrain, false if alt-above-ekf-origin
     bool        _ekf_origin_terrain_alt_set = false;
+    bool        _rangefinder_use = false;
+    bool        _rangefinder_healthy = false;
+    float       _rangefinder_alt_cm = 0.0f;
 };

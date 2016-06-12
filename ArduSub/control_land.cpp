@@ -97,8 +97,8 @@ void Sub::land_gps_run()
             update_simple_mode();
 
             // process pilot's roll and pitch input
-            roll_control = channel_roll->control_in;
-            pitch_control = channel_pitch->control_in;
+            roll_control = channel_roll->get_control_in();
+            pitch_control = channel_pitch->get_control_in();
 
             // record if pilot has overriden roll or pitch
             if (roll_control != 0 || pitch_control != 0) {
@@ -107,7 +107,7 @@ void Sub::land_gps_run()
         }
 
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
     }
 
     // set motors to full range
@@ -161,11 +161,11 @@ void Sub::land_nogps_run()
             update_simple_mode();
 
             // get pilot desired lean angles
-            get_pilot_desired_lean_angles(channel_roll->control_in, channel_pitch->control_in, target_roll, target_pitch, aparm.angle_max);
+            get_pilot_desired_lean_angles(channel_roll->get_control_in(), channel_pitch->get_control_in(), target_roll, target_pitch, aparm.angle_max);
         }
 
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
     }
 
     // if not auto armed or landed or motor interlock not enabled set throttle to zero and exit immediately
@@ -216,10 +216,10 @@ void Sub::land_nogps_run()
 //      should be called at 100hz or higher
 float Sub::get_land_descent_speed()
 {
-#if CONFIG_SONAR == ENABLED
-    bool sonar_ok = sonar_enabled && (sonar.status() == RangeFinder::RangeFinder_Good);
+#if RANGEFINDER_ENABLED == ENABLED
+	bool rangefinder_ok = rangefinder_state.enabled && rangefinder_state.alt_healthy;
 #else
-    bool sonar_ok = false;
+    bool rangefinder_ok = false;
 #endif
 
     // get position controller's target altitude above terrain
@@ -234,8 +234,8 @@ float Sub::get_land_descent_speed()
 		Log_Write_Error(ERROR_SUBSYSTEM_TERRAIN, ERROR_CODE_MISSING_TERRAIN_DATA);
 	}
 
-    // if we are above 10m and the sonar does not sense anything perform regular alt hold descent
-    if (target_alt_cm <= LAND_START_ALT && !(sonar_ok && sonar_alt_health >= SONAR_ALT_HEALTH_MAX)) {
+	// if we are above 10m and the rangefinder does not sense anything perform regular alt hold descent
+	if ((target_alt_cm >= LAND_START_ALT) && !rangefinder_ok) {
         if (g.land_speed_high > 0) {
             // user has asked for a different landing speed than normal descent rate
             return -abs(g.land_speed_high);

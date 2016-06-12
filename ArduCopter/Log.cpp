@@ -1,6 +1,7 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
 #include "Copter.h"
+#include "version.h"
 
 #if LOGGING_ENABLED == ENABLED
 
@@ -215,7 +216,7 @@ void Copter::Log_Write_AutoTuneDetails(float angle_cd, float rate_cds)
 // Write a Current data packet
 void Copter::Log_Write_Current()
 {
-    DataFlash.Log_Write_Current(battery, (int16_t)(motors.get_throttle()));
+    DataFlash.Log_Write_Current(battery);
 
     // also write power status
     DataFlash.Log_Write_Power();
@@ -304,8 +305,8 @@ struct PACKED log_Control_Tuning {
     float    desired_alt;
     float    inav_alt;
     int32_t  baro_alt;
-    int16_t  desired_sonar_alt;
-    int16_t  sonar_alt;
+    int16_t  desired_rangefinder_alt;
+    int16_t  rangefinder_alt;
     float    terr_alt;
     int16_t  desired_climb_rate;
     int16_t  climb_rate;
@@ -329,8 +330,8 @@ void Copter::Log_Write_Control_Tuning()
         desired_alt         : pos_control.get_alt_target() / 100.0f,
         inav_alt            : inertial_nav.get_altitude() / 100.0f,
         baro_alt            : baro_alt,
-        desired_sonar_alt   : (int16_t)target_sonar_alt,
-        sonar_alt           : sonar_alt,
+        desired_rangefinder_alt : (int16_t)target_rangefinder_alt,
+        rangefinder_alt     : rangefinder_state.alt_cm,
         terr_alt            : terr_alt,
         desired_climb_rate  : (int16_t)pos_control.get_vel_target_z(),
         climb_rate          : climb_rate
@@ -371,7 +372,7 @@ void Copter::Log_Write_Performance()
 void Copter::Log_Write_Attitude()
 {
     Vector3f targets = attitude_control.get_att_target_euler_cd();
-    targets.z = wrap_360_cd_float(targets.z);
+    targets.z = wrap_360_cd(targets.z);
     DataFlash.Log_Write_Attitude(ahrs, targets);
 
  #if OPTFLOW == ENABLED
@@ -559,7 +560,9 @@ void Copter::Log_Write_Error(uint8_t sub_system, uint8_t error_code)
 
 void Copter::Log_Write_Baro(void)
 {
-    DataFlash.Log_Write_Baro(barometer);
+    if (!ahrs.have_ekf_logging()) {
+        DataFlash.Log_Write_Baro(barometer);
+    }
 }
 
 struct PACKED log_ParameterTuning {

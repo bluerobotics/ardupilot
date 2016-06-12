@@ -23,33 +23,18 @@ if [[ "$cxx_compiler" == "clang++" ]]; then
   export CCACHE_CPP2="true"
 fi
 
-# If CI_BUILD_TARGET is not set, default to all of them
+# If CI_BUILD_TARGET is not set, build 3 different ones
 if [ -z "$CI_BUILD_TARGET" ]; then
-    CI_BUILD_TARGET="sitl linux navio2 raspilot minlure bebop px4-v2 px4-v4"
+    CI_BUILD_TARGET="sitl linux px4-v2"
 fi
 
-declare -A build_platforms
-declare -A build_concurrency
-declare -A build_extra_clean
-declare -A waf_supported_boards
-
-build_platforms=(  ["ArduPlane"]="navio2 raspilot minlure bebop sitl linux px4-v2"
-                   ["ArduCopter"]="navio2 raspilot minlure bebop sitl linux px4-v2 px4-v4"
-                   ["ArduSub"]="navio2 raspilot minlure bebop sitl linux px4-v2 px4-v4"
-                   ["APMrover2"]="navio2 raspilot minlure bebop sitl linux px4-v2"
-                   ["AntennaTracker"]="navio2 raspilot minlure bebop sitl linux px4-v2"
-                   ["Tools/Replay"]="linux")
-
-build_concurrency=(["navio2"]="-j2"
-                   ["raspilot"]="-j2"
-                   ["minlure"]="-j2"
-                   ["bebop"]="-j2"
-                   ["sitl"]="-j2"
-                   ["linux"]="-j2"
-                   ["px4-v2"]=""
-                   ["px4-v4"]="")
-
-build_extra_clean=(["px4-v2"]="make px4-cleandep")
+if [[ "$CI_BUILD_TARGET" == *"px4"* ]]; then
+    export CCACHE_MAXSIZE="1500M"
+elif [[ "$CI_BUILD_TARGET" == "sitltest" ]]; then
+    export CCACHE_MAXSIZE="300M"
+else
+    export CCACHE_MAXSIZE="1000M"
+fi
 
 # special case for SITL testing in CI
 if [ "$CI_BUILD_TARGET" = "sitltest" ]; then
@@ -65,43 +50,56 @@ if [ "$CI_BUILD_TARGET" = "sitltest" ]; then
     exit 0
 fi
 
+declare -A waf_supported_boards
+
 waf=modules/waf/waf-light
 
 # get list of boards supported by the waf build
 for board in $($waf list_boards | head -n1); do waf_supported_boards[$board]=1; done
 
-echo "Temporarily disabling px4 waf builds (broken in px4 merge)"
-waf_supported_boards[px4-v1]=""
-waf_supported_boards[px4-v2]=""
-waf_supported_boards[px4-v4]=""
+function get_time {
+    date -u "+%s"
+}
 
 echo "Targets: $CI_BUILD_TARGET"
 for t in $CI_BUILD_TARGET; do
-    # skip make-based build for clang
-    if [[ "$cxx_compiler" != "clang++" ]]; then
+    # only do make-based builds for GCC when target is PX4 or when launched by a scheduled job
+    if [[ "$cxx_compiler" != "clang++" && ( $t == "px4"* || -n ${CI_CRON_JOB+1} ) ]]; then
         echo "Starting make based build for target ${t}..."
-        for v in ${!build_platforms[@]}; do
-            if [[ ${build_platforms[$v]} != *$t* ]]; then
-                continue
-            fi
+        for v in "ArduPlane" "ArduCopter" "APMrover2" "ArduSub" "AntennaTracker"; do
             echo "Building $v for ${t}..."
 
             pushd $v
             make clean
-            if [ ${build_extra_clean[$t]+_} ]; then
-                ${build_extra_clean[$t]}
+            if [[ $t == "px4"* ]]; then
+                make px4-cleandep
             fi
 
-            make $t ${build_concurrency[$t]}
+            start_time=$(get_time)
+            make $t -j2
+            diff_time=$(($(get_time)-$start_time))
+            echo -e "\033[32m'make' finished successfully (${diff_time}s)\033[0m"
+            ccache -s && ccache -z
             popd
         done
+
+        if [[ $t == linux ]]; then
+            echo "Building Replay for ${t}..."
+
+            pushd "Tools/Replay"
+            make clean
+            make $t -j2
+            popd
+        fi
     fi
 
-    if [[ -n ${waf_supported_boards[$t]} ]]; then
+    if [[ -n ${waf_supported_boards[$t]} && -z ${CI_CRON_JOB+1} ]]; then
         echo "Starting waf build for board ${t}..."
         $waf configure --board $t --enable-benchmarks --check-c-compiler="$c_compiler" --check-cxx-compiler="$cxx_compiler"
         $waf clean
-        $waf ${build_concurrency[$t]} all
+        $waf all
+        ccache -s && ccache -z
+
         if [[ $t == linux ]]; then
             $waf check
         fi

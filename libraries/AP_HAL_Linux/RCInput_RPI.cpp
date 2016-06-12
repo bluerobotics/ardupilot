@@ -4,27 +4,25 @@
     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBRAIN2 ||   \
     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BH ||           \
     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXFMINI
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
+
 #include "GPIO.h"
 #include "RCInput_RPI.h"
 #include "Util_RPI.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <stdint.h>
-#include <sys/ioctl.h>
-#include <pthread.h>
-#include <string.h>
-#include <errno.h>
-#include <stdint.h>
-#include <time.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <assert.h>
-
 
 //Parametres
 #define RCIN_RPI_BUFFER_LENGTH   8
@@ -472,7 +470,7 @@ void RCInput_RPI::_timer_tick()
         break;}
     }
     
-    //How many bytes have DMA transfered (and we can process)?
+    //How many bytes have DMA transferred (and we can process)?
     counter = circle_buffer->bytes_available(curr_pointer, circle_buffer->get_offset(circle_buffer->_virt_pages, (uintptr_t)x));
     //We can't stay in method for a long time, because it may lead to delays
     if (counter > RCIN_RPI_MAX_COUNTER) {

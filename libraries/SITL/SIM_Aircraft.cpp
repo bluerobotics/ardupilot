@@ -29,6 +29,8 @@
 #include <Mmsystem.h>
 #endif
 
+#include <DataFlash/DataFlash.h>
+
 namespace SITL {
 
 /*
@@ -123,11 +125,8 @@ bool Aircraft::on_ground(const Vector3f &pos) const
 */
 void Aircraft::update_position(void)
 {
-    float bearing = degrees(atan2f(position.y, position.x));
-    float distance = sqrtf(sq(position.x) + sq(position.y));
-
     location = home;
-    location_update(location, bearing, distance);
+    location_offset(location, position.x, position.y);
 
     location.alt  = home.alt - position.z*100.0f;
 
@@ -140,18 +139,16 @@ void Aircraft::update_position(void)
     if (use_time_sync) {
         sync_frame_time();
     }
-}
 
-/*
-   rotate to the given yaw
-*/
-void Aircraft::set_yaw_degrees(float yaw_degrees)
-{
-    float roll, pitch, yaw;
-    dcm.to_euler(&roll, &pitch, &yaw);
-
-    yaw = radians(yaw_degrees);
-    dcm.from_euler(roll, pitch, yaw);
+#if 0
+    // logging of raw sitl data
+    Vector3f accel_ef = dcm * accel_body;
+    DataFlash_Class::instance()->Log_Write("SITL", "TimeUS,VN,VE,VD,AN,AE,AD,PN,PE,PD", "Qfffffffff",
+                                           AP_HAL::micros64(),
+                                           velocity_ef.x, velocity_ef.y, velocity_ef.z,
+                                           accel_ef.x, accel_ef.y, accel_ef.z,
+                                           position.x, position.y, position.z);
+#endif
 }
 
 /* advance time by deltat in seconds */
@@ -296,6 +293,8 @@ void Aircraft::fill_fdm(struct sitl_fdm &fdm) const
     fdm.battery_current = battery_current;
     fdm.rpm1 = rpm1;
     fdm.rpm2 = rpm2;
+    fdm.rcin_chan_count = rcin_chan_count;
+    memcpy(fdm.rcin, rcin, rcin_chan_count*sizeof(float));
 }
 
 uint64_t Aircraft::get_wall_time_us() const

@@ -93,6 +93,12 @@ void Plane::set_guided_WP(void)
     setup_glide_slope();
     setup_turn_angle();
 
+    // reset loiter start time.
+    loiter.start_time_ms = 0;
+
+    // start in non-VTOL mode
+    auto_state.vtol_loiter = false;
+    
     loiter_angle_reset();
 }
 
@@ -125,7 +131,15 @@ void Plane::init_home()
 void Plane::update_home()
 {
     if (home_is_set == HOME_SET_NOT_LOCKED) {
-        ahrs.set_home(gps.location());
+        Location loc = gps.location();
+        Location origin;
+        // if an EKF origin is available then we leave home equal to
+        // the height of that origin. This ensures that our relative
+        // height calculations are using the same origin
+        if (ahrs.get_origin(origin)) {
+            loc.alt = origin.alt;
+        }
+        ahrs.set_home(loc);
         Log_Write_Home_And_Origin();
         GCS_MAVLINK::send_home_all(gps.location());
     }

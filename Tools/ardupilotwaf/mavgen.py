@@ -6,15 +6,68 @@
 The **mavgen.py** program is a code generator which creates mavlink header files.
 """
 
-from waflib import Task, Utils, Node
+from waflib import Logs, Task, Utils, Node
 from waflib.TaskGen import feature, before_method, extension
 import os
+import os.path
+from xml.etree import ElementTree as et
 
 class mavgen(Task.Task):
     """generate mavlink header files"""
-    color   = 'GREEN'
-    run_str = '${PYTHON} ${MAVGEN} --lang=C --wire-protocol=1.0 --output ${OUTPUT_DIR} ${SRC}'
+    color   = 'BLUE'
     before  = 'cxx c'
+
+    def scan(self):
+        nodes = []
+        names = []
+
+        entry_point = self.inputs[0]
+        queue = [entry_point]
+        head = 0
+
+        while head < len(queue):
+            node = queue[head]
+            head += 1
+
+            tree = et.parse(node.abspath())
+            root = tree.getroot()
+            includes = root.findall('include')
+            for i in includes:
+                path = i.text.strip()
+                n = node.parent.find_node(path)
+                if n:
+                    nodes.append(n)
+                    if n not in queue:
+                        queue.append(n)
+                    continue
+
+                path = os.path.join(
+                    node.parent.path_from(entry_point.parent),
+                    path
+                )
+                if not path in names:
+                    names.append(path)
+
+        return nodes, names
+
+    def run(self):
+        python = self.env.get_flat('PYTHON')
+        mavgen = self.env.get_flat('MAVGEN')
+        out = self.env.get_flat('OUTPUT_DIR')
+        src = self.env.get_flat('SRC')
+        ret = self.exec_command('{} {} --lang=C --wire-protocol=2.0 --output {} {}'.format(
+                                python, mavgen, out, self.inputs[0].abspath()))
+
+        if ret != 0:
+            # ignore if there was a signal to the interpreter rather
+            # than a real error in the script. Some environments use a
+            # signed and some an unsigned return for this
+            if ret > 128 or ret < 0:
+                Logs.warn('mavgen crashed with code: {}'.format(ret))
+                ret = 0
+            else:
+                Logs.error('mavgen returned {} error code'.format(ret))
+        return ret
 
     def post_run(self):
         super(mavgen, self).post_run()

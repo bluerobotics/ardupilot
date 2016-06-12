@@ -293,7 +293,7 @@ bool Copter::pre_arm_checks(bool display_failure)
         // failsafe parameter checks
         if (g.failsafe_throttle) {
             // check throttle min is above throttle failsafe trigger and that the trigger is above ppm encoder's loss-of-signal value of 900
-            if (channel_throttle->radio_min <= g.failsafe_throttle_value+10 || g.failsafe_throttle_value < 910) {
+            if (channel_throttle->get_radio_min() <= g.failsafe_throttle_value+10 || g.failsafe_throttle_value < 910) {
                 if (display_failure) {
                     gcs_send_text(MAV_SEVERITY_CRITICAL,"PreArm: Check FS_THR_VALUE");
                 }
@@ -317,9 +317,9 @@ bool Copter::pre_arm_checks(bool display_failure)
             return false;
         }
 
-        #if CONFIG_SONAR == ENABLED && OPTFLOW == ENABLED
+        #if RANGEFINDER_ENABLED == ENABLED && OPTFLOW == ENABLED
         // check range finder if optflow enabled
-        if (optflow.enabled() && !sonar.pre_arm_check()) {
+        if (optflow.enabled() && !rangefinder.pre_arm_check()) {
             if (display_failure) {
                 gcs_send_text(MAV_SEVERITY_CRITICAL,"PreArm: check range finder");
             }
@@ -334,8 +334,7 @@ bool Copter::pre_arm_checks(bool display_failure)
         #endif // HELI_FRAME
 
         // check for missing terrain data
-        if (!pre_arm_terrain_check()) {
-            gcs_send_text(MAV_SEVERITY_CRITICAL,"PreArm: Waiting for Terrain data");
+        if (!pre_arm_terrain_check(display_failure)) {
             return false;
         }
     }
@@ -343,7 +342,7 @@ bool Copter::pre_arm_checks(bool display_failure)
     // check throttle is above failsafe throttle
     // this is near the bottom to allow other failures to be displayed before checking pilot throttle
     if ((g.arming_check == ARMING_CHECK_ALL) || (g.arming_check & ARMING_CHECK_RC)) {
-        if (g.failsafe_throttle != FS_THR_DISABLED && channel_throttle->radio_in < g.failsafe_throttle_value) {
+        if (g.failsafe_throttle != FS_THR_DISABLED && channel_throttle->get_radio_in() < g.failsafe_throttle_value) {
             if (display_failure) {
                 #if FRAME_CONFIG == HELI_FRAME
                 gcs_send_text(MAV_SEVERITY_CRITICAL,"PreArm: Collective below Failsafe");
@@ -373,27 +372,27 @@ void Copter::pre_arm_rc_checks()
     }
 
     // check if radio has been calibrated
-    if (!channel_throttle->radio_min.configured() && !channel_throttle->radio_max.configured()) {
+    if (!channel_throttle->min_max_configured()) {
         return;
     }
 
     // check channels 1 & 2 have min <= 1300 and max >= 1700
-    if (channel_roll->radio_min > 1300 || channel_roll->radio_max < 1700 || channel_pitch->radio_min > 1300 || channel_pitch->radio_max < 1700) {
+    if (channel_roll->get_radio_min() > 1300 || channel_roll->get_radio_max() < 1700 || channel_pitch->get_radio_min() > 1300 || channel_pitch->get_radio_max() < 1700) {
         return;
     }
 
     // check channels 3 & 4 have min <= 1300 and max >= 1700
-    if (channel_throttle->radio_min > 1300 || channel_throttle->radio_max < 1700 || channel_yaw->radio_min > 1300 || channel_yaw->radio_max < 1700) {
+    if (channel_throttle->get_radio_min() > 1300 || channel_throttle->get_radio_max() < 1700 || channel_yaw->get_radio_min() > 1300 || channel_yaw->get_radio_max() < 1700) {
         return;
     }
 
     // check channels 1 & 2 have trim >= 1300 and <= 1700
-    if (channel_roll->radio_trim < 1300 || channel_roll->radio_trim > 1700 || channel_pitch->radio_trim < 1300 || channel_pitch->radio_trim > 1700) {
+    if (channel_roll->get_radio_trim() < 1300 || channel_roll->get_radio_trim() > 1700 || channel_pitch->get_radio_trim() < 1300 || channel_pitch->get_radio_trim() > 1700) {
         return;
     }
 
     // check channel 4 has trim >= 1300 and <= 1700
-    if (channel_yaw->radio_trim < 1300 || channel_yaw->radio_trim > 1700) {
+    if (channel_yaw->get_radio_trim() < 1300 || channel_yaw->get_radio_trim() > 1700) {
         return;
     }
 
@@ -493,7 +492,7 @@ bool Copter::pre_arm_ekf_attitude_check()
 }
 
 // check we have required terrain data
-bool Copter::pre_arm_terrain_check()
+bool Copter::pre_arm_terrain_check(bool display_failure)
 {
 #if AP_TERRAIN_AVAILABLE && AC_TERRAIN
     // succeed if not using terrain data
@@ -501,10 +500,21 @@ bool Copter::pre_arm_terrain_check()
         return true;
     }
 
+    // check if terrain following is enabled, using a range finder but RTL_ALT is higher than rangefinder's max range
+    // To-Do: modify RTL return path to fly at or above the RTL_ALT and remove this check
+    if ((rangefinder.num_sensors() > 0) && (g.rtl_altitude > rangefinder.max_distance_cm())) {
+        gcs_send_text(MAV_SEVERITY_CRITICAL,"PreArm: RTL_ALT above rangefinder max range");
+        return false;
+    }
+
     // show terrain statistics
     uint16_t terr_pending, terr_loaded;
     terrain.get_statistics(terr_pending, terr_loaded);
-    return (terr_pending <= 0);
+    bool have_all_data = (terr_pending <= 0);
+    if (!have_all_data && display_failure) {
+        gcs_send_text(MAV_SEVERITY_CRITICAL,"PreArm: Waiting for Terrain data");
+    }
+    return have_all_data;
 #else
     return true;
 #endif
@@ -662,8 +672,7 @@ bool Copter::arm_checks(bool display_failure, bool arming_from_gcs)
 
     // check for missing terrain data
     if ((g.arming_check == ARMING_CHECK_ALL) || (g.arming_check & ARMING_CHECK_PARAMETERS)) {
-        if (!pre_arm_terrain_check()) {
-            gcs_send_text(MAV_SEVERITY_CRITICAL,"Arm: Waiting for Terrain data");
+        if (!pre_arm_terrain_check(display_failure)) {
             return false;
         }
     }
@@ -671,7 +680,7 @@ bool Copter::arm_checks(bool display_failure, bool arming_from_gcs)
     // check throttle
     if ((g.arming_check == ARMING_CHECK_ALL) || (g.arming_check & ARMING_CHECK_RC)) {
         // check throttle is not too low - must be above failsafe throttle
-        if (g.failsafe_throttle != FS_THR_DISABLED && channel_throttle->radio_in < g.failsafe_throttle_value) {
+        if (g.failsafe_throttle != FS_THR_DISABLED && channel_throttle->get_radio_in() < g.failsafe_throttle_value) {
             if (display_failure) {
                 #if FRAME_CONFIG == HELI_FRAME
                 gcs_send_text(MAV_SEVERITY_CRITICAL,"Arm: Collective below Failsafe");
@@ -685,7 +694,7 @@ bool Copter::arm_checks(bool display_failure, bool arming_from_gcs)
         // check throttle is not too high - skips checks if arming from GCS in Guided
         if (!(arming_from_gcs && control_mode == GUIDED)) {
             // above top of deadband is too always high
-            if (channel_throttle->control_in > get_takeoff_trigger_throttle()) {
+            if (channel_throttle->get_control_in() > get_takeoff_trigger_throttle()) {
                 if (display_failure) {
                     #if FRAME_CONFIG == HELI_FRAME
                     gcs_send_text(MAV_SEVERITY_CRITICAL,"Arm: Collective too high");
@@ -696,7 +705,7 @@ bool Copter::arm_checks(bool display_failure, bool arming_from_gcs)
                 return false;
             }
             // in manual modes throttle must be at zero
-            if ((mode_has_manual_throttle(control_mode) || control_mode == DRIFT) && channel_throttle->control_in > 0) {
+            if ((mode_has_manual_throttle(control_mode) || control_mode == DRIFT) && channel_throttle->get_control_in() > 0) {
                 if (display_failure) {
                     #if FRAME_CONFIG == HELI_FRAME
                     gcs_send_text(MAV_SEVERITY_CRITICAL,"Arm: Collective too high");

@@ -1,4 +1,4 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: t -*-
+// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
 #include "AC_AttitudeControl.h"
 #include <AP_HAL/AP_HAL.h>
@@ -398,6 +398,7 @@ void AC_AttitudeControl::rate_controller_run()
     _motors.set_roll(rate_bf_to_motor_roll(_ang_vel_target_rads.x));
     _motors.set_pitch(rate_bf_to_motor_pitch(_ang_vel_target_rads.y));
     _motors.set_yaw(rate_bf_to_motor_yaw(_ang_vel_target_rads.z));
+    control_monitor_update();
 }
 
 void AC_AttitudeControl::euler_rate_to_ang_vel(const Vector3f& euler_rad, const Vector3f& euler_rate_rads, Vector3f& ang_vel_rads)
@@ -603,7 +604,6 @@ void AC_AttitudeControl::set_throttle_out(float throttle_in, bool apply_angle_bo
 {
     _throttle_in = throttle_in;
     _throttle_in_filt.apply(throttle_in, _dt);
-    _motors.set_stabilizing(true);
     _motors.set_throttle_filter_cutoff(filter_cutoff);
     if (apply_angle_boost) {
         _motors.set_throttle(get_boosted_throttle(throttle_in));
@@ -618,12 +618,11 @@ void AC_AttitudeControl::set_throttle_out_unstabilized(float throttle_in, bool r
 {
     _throttle_in = throttle_in;
     _throttle_in_filt.apply(throttle_in, _dt);
+    _motors.set_throttle_filter_cutoff(filter_cutoff);
     if (reset_attitude_control) {
         relax_bf_rate_controller();
         set_yaw_target_to_current_heading();
     }
-    _motors.set_throttle_filter_cutoff(filter_cutoff);
-    _motors.set_stabilizing(false);
     _motors.set_throttle(throttle_in);
     _angle_boost = 0.0f;
 }

@@ -53,6 +53,10 @@ bool Sub::start_command(const AP_Mission::Mission_Command& cmd)
         break;
 #endif
 
+    case MAV_CMD_NAV_DELAY:                    // 94 Delay the next navigation command
+        do_nav_delay(cmd);
+        break;
+
     //
     // conditional commands
     //
@@ -212,6 +216,9 @@ bool Sub::verify_command(const AP_Mission::Mission_Command& cmd)
         return verify_nav_guided_enable(cmd);
 #endif
 
+    case MAV_CMD_NAV_DELAY:
+        return verify_nav_delay(cmd);
+
     ///
     /// conditional commands
     ///
@@ -283,13 +290,31 @@ void Sub::do_takeoff(const AP_Mission::Mission_Command& cmd)
 // do_nav_wp - initiate move to next waypoint
 void Sub::do_nav_wp(const AP_Mission::Mission_Command& cmd)
 {
+	Location_Class target_loc(cmd.content.location);
+    // use current lat, lon if zero
+    if (target_loc.lat == 0 && target_loc.lng == 0) {
+        target_loc.lat = current_loc.lat;
+        target_loc.lng = current_loc.lng;
+    }
+    // use current altitude if not provided
+    if (target_loc.alt == 0) {
+        // set to current altitude but in command's alt frame
+        int32_t curr_alt;
+        if (current_loc.get_alt_cm(target_loc.get_alt_frame(),curr_alt)) {
+            target_loc.set_alt_cm(curr_alt, target_loc.get_alt_frame());
+        } else {
+            // default to current altitude as alt-above-home
+            target_loc.set_alt_cm(current_loc.alt, current_loc.get_alt_frame());
+        }
+    }
+
     // this will be used to remember the time in millis after we reach or pass the WP.
     loiter_time = 0;
     // this is the delay, stored in seconds
     loiter_time_max = cmd.p1;
 
     // Set wp navigation target
-    auto_wp_start(Location_Class(cmd.content.location));
+    auto_wp_start(target_loc);
 
     // if no delay set the waypoint as "fast"
     if (loiter_time_max == 0 ) {
@@ -344,7 +369,9 @@ void Sub::do_loiter_unlimited(const AP_Mission::Mission_Command& cmd)
         // To-Do: make this simpler
         Vector3f temp_pos;
         wp_nav.get_wp_stopping_point_xy(temp_pos);
-        target_loc.offset(temp_pos.x * 100.0f, temp_pos.y * 100.0f);
+        Location_Class temp_loc(temp_pos);
+        target_loc.lat = temp_loc.lat;
+        target_loc.lng = temp_loc.lng;
     }
 
     // use current altitude if not provided
@@ -494,6 +521,21 @@ void Sub::do_nav_guided_enable(const AP_Mission::Mission_Command& cmd)
     }
 }
 #endif  // NAV_GUIDED
+
+// do_nav_delay - Delay the next navigation command
+void Sub::do_nav_delay(const AP_Mission::Mission_Command& cmd)
+{
+    nav_delay_time_start = millis();
+
+    if (cmd.content.nav_delay.seconds > 0) {
+        // relative delay
+        nav_delay_time_max = cmd.content.nav_delay.seconds * 1000; // convert seconds to milliseconds
+    } else {
+        // absolute delay to utc time
+        nav_delay_time_max = hal.util->get_time_utc(cmd.content.nav_delay.hour_utc, cmd.content.nav_delay.min_utc, cmd.content.nav_delay.sec_utc, 0);
+    }
+    gcs_send_text_fmt(MAV_SEVERITY_INFO, "Delaying %u sec",(unsigned int)(nav_delay_time_max/1000));
+}
 
 
 #if PARACHUTE == ENABLED
@@ -719,6 +761,15 @@ bool Sub::verify_nav_guided_enable(const AP_Mission::Mission_Command& cmd)
 }
 #endif  // NAV_GUIDED
 
+// verify_nav_delay - check if we have waited long enough
+bool Sub::verify_nav_delay(const AP_Mission::Mission_Command& cmd)
+{
+    if (millis() - nav_delay_time_start > (uint32_t)MAX(nav_delay_time_max,0)) {
+        nav_delay_time_max = 0;
+       return true;
+    }
+    return false;
+}
 
 /********************************************************************************/
 //	Condition (May) commands

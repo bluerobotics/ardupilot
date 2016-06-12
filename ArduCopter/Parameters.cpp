@@ -97,8 +97,8 @@ const AP_Param::Info Copter::var_info[] = {
     // @DisplayName: Throttle stick behavior
     // @Description: Bitmask containing various throttle stick options. Add up the values for options that you want.
     // @User: Standard
-    // @Values: 0:None,1:Feedback from mid stick,2:High throttle cancels landing
-    // @Bitmask: 0:Feedback from mid stick,1:High throttle cancels landing
+    // @Values: 0:None,1:Feedback from mid stick,2:High throttle cancels landing,4:Disarm on land detection
+    // @Bitmask: 0:Feedback from mid stick,1:High throttle cancels landing,2:Disarm on land detection
     GSCALAR(throttle_behavior, "PILOT_THR_BHV", 0),
 
     // @Group: SERIAL
@@ -130,7 +130,7 @@ const AP_Param::Info Copter::var_info[] = {
     // @Increment: 1
     // @User: Standard
     GSCALAR(rtl_altitude,   "RTL_ALT",     RTL_ALT),
-    
+
     // @Param: RTL_CONE_SLOPE
     // @DisplayName: RTL cone slope
     // @Description: Defines a cone above home which determines maximum climb
@@ -138,7 +138,7 @@ const AP_Param::Info Copter::var_info[] = {
     // @Increment: .1
     // @Values: 0:Disabled,1:Shallow,3:Steep
     // @User: Standard
-    GSCALAR(rtl_cone_slope,   "RTL_CONE_SLOPE",     RTL_CONE_SLOPE),
+    GSCALAR(rtl_cone_slope,   "RTL_CONE_SLOPE",     RTL_CONE_SLOPE_DEFAULT),
 
     // @Param: RTL_SPEED
     // @DisplayName: RTL speed
@@ -155,7 +155,7 @@ const AP_Param::Info Copter::var_info[] = {
     // @Range: 0.01 2.0
     // @Increment: 0.01
     // @User: Standard
-    GSCALAR(sonar_gain,     "RNGFND_GAIN",           SONAR_GAIN_DEFAULT),
+    GSCALAR(rangefinder_gain, "RNGFND_GAIN", RANGEFINDER_GAIN_DEFAULT),
 
     // @Param: FS_BATT_ENABLE
     // @DisplayName: Battery Failsafe Enable
@@ -372,8 +372,8 @@ const AP_Param::Info Copter::var_info[] = {
     // @Param: LOG_BITMASK
     // @DisplayName: Log bitmask
     // @Description: 4 byte bitmap of log types to enable
-    // @Values: 830:Default,894:Default+RCIN,958:Default+IMU,1854:Default+Motors,-6146:NearlyAll-AC315,45054:NearlyAll,131070:All+DisarmedLogging,131071:All+FastATT,262142:All+MotBatt,393214:All+FastIMU,397310:All+FastIMU+PID,655358:All+FullIMU,0:Disabled
-    // @Bitmask: 0:ATTITUDE_FAST,1:ATTITUDE_MED,2:GPS,3:PM,4:CTUN,5:NTUN,6:RCIN,7:IMU,8:CMD,9:CURRENT,10:RCOUT,11:OPTFLOW,12:PID,13:COMPASS,14:INAV,15:CAMERA,16:WHEN_DISARMED,17:MOTBATT,18:IMU_FAST,19:IMU_RAW
+    // @Values: 830:Default,894:Default+RCIN,958:Default+IMU,1854:Default+Motors,-6146:NearlyAll-AC315,45054:NearlyAll,131071:All+FastATT,262142:All+MotBatt,393214:All+FastIMU,397310:All+FastIMU+PID,655358:All+FullIMU,0:Disabled
+    // @Bitmask: 0:ATTITUDE_FAST,1:ATTITUDE_MED,2:GPS,3:PM,4:CTUN,5:NTUN,6:RCIN,7:IMU,8:CMD,9:CURRENT,10:RCOUT,11:OPTFLOW,12:PID,13:COMPASS,14:INAV,15:CAMERA,17:MOTBATT,18:IMU_FAST,19:IMU_RAW
     // @User: Standard
     GSCALAR(log_bitmask,    "LOG_BITMASK",          DEFAULT_LOG_BITMASK),
 
@@ -457,8 +457,8 @@ const AP_Param::Info Copter::var_info[] = {
     // @Param: ARMING_CHECK
     // @DisplayName: Arming check
     // @Description: Allows enabling or disabling of pre-arming checks of receiver, accelerometer, barometer, compass and GPS
-    // @Values: 0:Disabled, 1:Enabled, -3:Skip Baro, -5:Skip Compass, -9:Skip GPS, -17:Skip INS, -33:Skip Params/Sonar, -65:Skip RC, 127:Skip Voltage
-    // @Bitmask: 0:All,1:Baro,2:Compass,3:GPS,4:INS,5:Parameters+Sonar,6:RC,7:Voltage
+    // @Values: 0:Disabled, 1:Enabled, -3:Skip Baro, -5:Skip Compass, -9:Skip GPS, -17:Skip INS, -33:Skip Params/Rangefinder, -65:Skip RC, 127:Skip Voltage
+    // @Bitmask: 0:All,1:Baro,2:Compass,3:GPS,4:INS,5:Parameters+Rangefinder,6:RC,7:Voltage
     // @User: Standard
     GSCALAR(arming_check, "ARMING_CHECK",           ARMING_CHECK_ALL),
 
@@ -895,10 +895,10 @@ const AP_Param::Info Copter::var_info[] = {
     // @Path: ../libraries/AP_RSSI/AP_RSSI.cpp
     GOBJECT(rssi, "RSSI_",  AP_RSSI),      
     
-#if CONFIG_SONAR == ENABLED
+#if RANGEFINDER_ENABLED == ENABLED
     // @Group: RNGFND
     // @Path: ../libraries/AP_RangeFinder/RangeFinder.cpp
-    GOBJECT(sonar,   "RNGFND", RangeFinder),
+    GOBJECT(rangefinder,   "RNGFND", RangeFinder),
 #endif
 
 #if AP_TERRAIN_AVAILABLE && AC_TERRAIN
@@ -1043,13 +1043,26 @@ void Copter::convert_pid_parameters(void)
         { Parameters::k_param_pid_rate_yaw, 0, AP_PARAM_FLOAT, "ATC_RAT_YAW_P" },
         { Parameters::k_param_pid_rate_yaw, 1, AP_PARAM_FLOAT, "ATC_RAT_YAW_I" },
         { Parameters::k_param_pid_rate_yaw, 2, AP_PARAM_FLOAT, "ATC_RAT_YAW_D" },
+#if FRAME_CONFIG == HELI_FRAME
+        { Parameters::k_param_pid_rate_roll,  4, AP_PARAM_FLOAT, "ATC_RAT_RLL_VFF" },
+        { Parameters::k_param_pid_rate_pitch, 4, AP_PARAM_FLOAT, "ATC_RAT_PIT_VFF" },
+        { Parameters::k_param_pid_rate_yaw  , 4, AP_PARAM_FLOAT, "ATC_RAT_YAW_VFF" },
+#endif
     };
     AP_Param::ConversionInfo imax_conversion_info[] = {
         { Parameters::k_param_pid_rate_roll,  5, AP_PARAM_FLOAT, "ATC_RAT_RLL_IMAX" },
         { Parameters::k_param_pid_rate_pitch, 5, AP_PARAM_FLOAT, "ATC_RAT_PIT_IMAX" },
-        { Parameters::k_param_pid_rate_yaw,   5, AP_PARAM_FLOAT, "ATC_RAT_YAW_IMAX" }
+        { Parameters::k_param_pid_rate_yaw,   5, AP_PARAM_FLOAT, "ATC_RAT_YAW_IMAX" },
+#if FRAME_CONFIG == HELI_FRAME
+        { Parameters::k_param_pid_rate_roll,  7, AP_PARAM_FLOAT, "ATC_RAT_RLL_ILMI" },
+        { Parameters::k_param_pid_rate_pitch, 7, AP_PARAM_FLOAT, "ATC_RAT_PIT_ILMI" },
+        { Parameters::k_param_pid_rate_yaw,   7, AP_PARAM_FLOAT, "ATC_RAT_YAW_ILMI" },
+#endif
     };
-    AP_Param::ConversionInfo filt_conversion_info[] = {
+    AP_Param::ConversionInfo angle_and_filt_conversion_info[] = {
+        { Parameters::k_param_p_stabilize_roll, 0, AP_PARAM_FLOAT, "ATC_ANG_RLL_P" },
+        { Parameters::k_param_p_stabilize_pitch, 0, AP_PARAM_FLOAT, "ATC_ANG_PIT_P" },
+        { Parameters::k_param_p_stabilize_yaw, 0, AP_PARAM_FLOAT, "ATC_ANG_YAW_P" },
         { Parameters::k_param_pid_rate_roll, 6, AP_PARAM_FLOAT, "ATC_RAT_RLL_FILT" },
         { Parameters::k_param_pid_rate_pitch, 6, AP_PARAM_FLOAT, "ATC_RAT_PIT_FILT" },
         { Parameters::k_param_pid_rate_yaw, 6, AP_PARAM_FLOAT, "ATC_RAT_YAW_FILT" }
@@ -1076,9 +1089,9 @@ void Copter::convert_pid_parameters(void)
     for (uint8_t i=0; i<table_size; i++) {
         AP_Param::convert_old_parameter(&imax_conversion_info[i], 1.0f/4500.0f);
     }
-    // convert filter without scaling
-    table_size = ARRAY_SIZE(filt_conversion_info);
+    // convert angle controller gain and filter without scaling
+    table_size = ARRAY_SIZE(angle_and_filt_conversion_info);
     for (uint8_t i=0; i<table_size; i++) {
-        AP_Param::convert_old_parameter(&filt_conversion_info[i], 1.0f);
+        AP_Param::convert_old_parameter(&angle_and_filt_conversion_info[i], 1.0f);
     }
 }

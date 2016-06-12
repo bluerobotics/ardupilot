@@ -1,6 +1,7 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
 #include "Copter.h"
+#include "version.h"
 
 /*****************************************************************************
 *   The init_ardupilot function processes everything we need for an in - air restart
@@ -141,17 +142,10 @@ void Copter::init_ardupilot()
     ap.usb_connected = true;
     check_usb_mux();
 
-    // init the GCS connected to the console
-    gcs[0].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_Console, 0);
-
-    // init telemetry port
-    gcs[1].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, 0);
-
-    // setup serial port for telem2
-    gcs[2].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, 1);
-
-    // setup serial port for fourth telemetry port (not used by default)
-    gcs[3].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, 2);
+    // setup telem slots with serial ports
+    for (uint8_t i = 0; i < MAVLINK_COMM_NUM_BUFFERS; i++) {
+        gcs[i].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, i);
+    }
 
 #if FRSKY_TELEM_ENABLED == ENABLED
     // setup frsky
@@ -255,10 +249,8 @@ void Copter::init_ardupilot()
     //-----------------------------
     init_barometer(true);
 
-    // initialise sonar
-#if CONFIG_SONAR == ENABLED
-    init_sonar();
-#endif
+    // initialise rangefinder
+    init_rangefinder();
 
     // initialise AP_RPM library
     rpm_sensor.init();
@@ -311,7 +303,7 @@ void Copter::startup_INS_ground()
     ahrs.reset();
 }
 
-// calibrate gyros - returns true if succesfully calibrated
+// calibrate gyros - returns true if successfully calibrated
 bool Copter::calibrate_gyros()
 {
     // gyro offset calibration
@@ -449,7 +441,7 @@ bool Copter::should_log(uint32_t mask)
     if (!(mask & g.log_bitmask) || in_mavlink_delay) {
         return false;
     }
-    bool ret = motors.armed() || (g.log_bitmask & MASK_LOG_WHEN_DISARMED) != 0;
+    bool ret = motors.armed() || DataFlash.log_while_disarmed();
     if (ret && !DataFlash.logging_started() && !in_log_download) {
         start_logging();
     }

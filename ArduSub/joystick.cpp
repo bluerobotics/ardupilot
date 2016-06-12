@@ -13,6 +13,12 @@ namespace {
 	int16_t lights2 = 1100;
 	int16_t rollTrim = 0;
 	int16_t pitchTrim = 0;
+	int16_t zTrim = 0;
+	int16_t xTrim = 0;
+	int16_t yTrim = 0;
+	int16_t video_switch = 1100;
+	int16_t x_last, y_last, z_last;
+	uint16_t buttons_prev;
 	float gain = 0.5;
 	float maxGain = 1.0;
 	float minGain = 0.25;
@@ -20,45 +26,54 @@ namespace {
 }
 
 void Sub::transform_manual_control_to_rc_override(int16_t x, int16_t y, int16_t z, int16_t r, uint16_t buttons) {
-	int16_t channels[10];
+	int16_t channels[11];
 
 	uint32_t tnow_ms = millis();
 
-	float rpyScale = 0.5*gain; // Scale -1000-1000 to -500-500 with gain
+	float rpyScale = 0.4*gain; // Scale -1000-1000 to -400-400 with gain
 	float throttleScale = 0.8*gain; // Scale 0-1000 to 0-800 with gain
 	int16_t rpyCenter = 1500;
 	int16_t throttleBase = 1500-500*throttleScale;
+
 	bool shift = false;
 	static uint32_t buttonDebounce;
 
 	// Debouncing timer
-	if ( tnow_ms - buttonDebounce > 50 ) {
-		buttonDebounce = tnow_ms;
-
+	if ( tnow_ms - buttonDebounce > 100 ) {
 		// Detect if any shift button is pressed
 		for ( uint8_t i = 0 ; i < 16 ; i++ ) {
 			if ( (buttons & (1 << i)) && get_button(i)->function() == JSButton::button_function_t::k_shift ) { shift = true; }
 		}
 
 		// Act if button is pressed
+		// Only act upon pressing button and ignore holding. This provides compatibility with Taranis as joystick.
 		for ( uint8_t i = 0 ; i < 16 ; i++ ) {
-			if ( buttons & (1 << i) ) {
+			if ( (buttons & (1 << i)) && !(buttons_prev & (1 << i)) ) {
 				handle_jsbutton_press(i,shift);
+				buttonDebounce = tnow_ms;
 			}
 		}
+
+		buttons_prev = buttons;
 	}
 
 	// Set channels to override
-	channels[0] = 1500 + pitchTrim;               // pitch
-	channels[1] = 1500 + rollTrim;                // roll
-	channels[2] = z*throttleScale+throttleBase;   // throttle
-	channels[3] = r*rpyScale+rpyCenter;           // yaw
-	channels[4] = mode;                           // for testing only
-	channels[5] = x*rpyScale+rpyCenter;           // forward for ROV
-	channels[6] = y*rpyScale+rpyCenter;           // lateral for ROV
-	channels[7] = camTilt;                        // camera tilt
-	channels[8] = lights1;
-	channels[9] = lights2;
+	channels[0] = 1500 + pitchTrim;                           // pitch
+	channels[1] = 1500 + rollTrim;                            // roll
+	channels[2] = constrain_int16((z+zTrim)*throttleScale+throttleBase,1100,1900);  // throttle
+	channels[3] = constrain_int16(r*rpyScale+rpyCenter,1100,1900);                       // yaw
+	channels[4] = mode;                                       // for testing only
+	channels[5] = constrain_int16((x+xTrim)*rpyScale+rpyCenter,1100,1900);           // forward for ROV
+	channels[6] = constrain_int16((y+yTrim)*rpyScale+rpyCenter,1100,1900);           // lateral for ROV
+	channels[7] = camTilt;                                    // camera tilt
+	channels[8] = lights1;                                    // lights 1
+	channels[9] = lights2;                                    // lights 2
+	channels[10] = video_switch;                              // video switch
+
+	// Store old x, y, z values for use in input hold logic
+	x_last = x;
+	y_last = y;
+	z_last = z;
 
 	// record that rc are overwritten so we can trigger a failsafe if we lose contact with groundstation
 	failsafe.rc_override_active = hal.rcin->set_overrides(channels, 10);
@@ -68,6 +83,11 @@ void Sub::handle_jsbutton_press(uint8_t button, bool shift) {
 	// Act based on the function assigned to this button
 	switch ( get_button(button)->function(shift) ) {
 		case JSButton::button_function_t::k_arm_toggle:
+			if ( motors.armed() ) {
+				init_disarm_motors();
+			} else {
+				init_arm_motors(true);
+			}
 			break;
 		case JSButton::button_function_t::k_arm:
 			init_arm_motors(true);
@@ -106,6 +126,19 @@ void Sub::handle_jsbutton_press(uint8_t button, bool shift) {
 			camTilt = constrain_float(camTilt+30,800,2200);
 			break;
 		case JSButton::button_function_t::k_camera_trigger:
+			break;
+		case JSButton::button_function_t::k_camera_source_toggle:
+			{
+				static bool video_toggle = false;
+				video_toggle = !video_toggle;
+				if ( video_toggle ) {
+					video_switch = 1900;
+					gcs_send_text(MAV_SEVERITY_INFO,"Video Toggle: Source 2");
+				} else {
+					video_switch = 1100;
+					gcs_send_text(MAV_SEVERITY_INFO,"Video Toggle: Source 1");
+				}
+			}
 			break;
 		case JSButton::button_function_t::k_lights1_cycle:
 			{
@@ -176,6 +209,12 @@ void Sub::handle_jsbutton_press(uint8_t button, bool shift) {
 			break;
 		case JSButton::button_function_t::k_trim_pitch_dec:
 			pitchTrim = constrain_float(pitchTrim-10,-200,200);
+			break;
+		case JSButton::button_function_t::k_input_hold_toggle:
+			zTrim = z_last-500;
+			xTrim = x_last;
+			yTrim = y_last;
+			gcs_send_text(MAV_SEVERITY_INFO,"Input Hold Set");
 			break;
 	}
 }

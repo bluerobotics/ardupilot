@@ -25,7 +25,7 @@ void Copter::get_pilot_desired_lean_angles(float roll_in, float pitch_in, float 
     pitch_in *= scaler;
 
     // do circular limit
-    float total_in = pythagorous2((float)pitch_in, (float)roll_in);
+    float total_in = norm(pitch_in, roll_in);
     if (total_in > angle_max) {
         float ratio = angle_max / total_in;
         roll_in *= ratio;
@@ -82,7 +82,7 @@ float Copter::get_roi_yaw()
 float Copter::get_look_ahead_yaw()
 {
     const Vector3f& vel = inertial_nav.get_velocity();
-    float speed = pythagorous2(vel.x,vel.y);
+    float speed = norm(vel.x,vel.y);
     // Commanded Yaw to automatically look ahead.
     if (position_ok() && (speed > YAW_LOOK_AHEAD_MIN_SPEED)) {
         yaw_look_ahead_bearing = degrees(atan2f(vel.y,vel.x))*100.0f;
@@ -199,7 +199,9 @@ float Copter::get_pilot_desired_climb_rate(float throttle_control)
 // get_non_takeoff_throttle - a throttle somewhere between min and mid throttle which should not lead to a takeoff
 float Copter::get_non_takeoff_throttle()
 {
-    return (((float)g.throttle_mid/1000.0f)/2.0f);
+    // ensure mid throttle is set within a reasonable range
+    g.throttle_mid = constrain_int16(g.throttle_mid,g.throttle_min+50,700);
+    return MAX(0,g.throttle_mid-g.throttle_min) / ((float)(1000-g.throttle_min) * 2.0f);
 }
 
 float Copter::get_takeoff_trigger_throttle()
@@ -244,6 +246,7 @@ float Copter::get_throttle_pre_takeoff(float input_thr)
 //      returns climb rate (in cm/s) which should be passed to the position controller
 float Copter::get_surface_tracking_climb_rate(int16_t target_rate, float current_alt_target, float dt)
 {
+#if RANGEFINDER_ENABLED == ENABLED
     static uint32_t last_call_ms = 0;
     float distance_error;
     float velocity_correction;
@@ -252,27 +255,30 @@ float Copter::get_surface_tracking_climb_rate(int16_t target_rate, float current
     uint32_t now = millis();
 
     // reset target altitude if this controller has just been engaged
-    if (now - last_call_ms > SONAR_TIMEOUT_MS) {
-        target_sonar_alt = sonar_alt + current_alt_target - current_alt;
+    if (now - last_call_ms > RANGEFINDER_TIMEOUT_MS) {
+        target_rangefinder_alt = rangefinder_state.alt_cm + current_alt_target - current_alt;
     }
     last_call_ms = now;
 
-    // adjust sonar target alt if motors have not hit their limits
+    // adjust rangefinder target alt if motors have not hit their limits
     if ((target_rate<0 && !motors.limit.throttle_lower) || (target_rate>0 && !motors.limit.throttle_upper)) {
-        target_sonar_alt += target_rate * dt;
+        target_rangefinder_alt += target_rate * dt;
     }
 
     // do not let target altitude get too far from current altitude above ground
     // Note: the 750cm limit is perhaps too wide but is consistent with the regular althold limits and helps ensure a smooth transition
-    target_sonar_alt = constrain_float(target_sonar_alt,sonar_alt-pos_control.get_leash_down_z(),sonar_alt+pos_control.get_leash_up_z());
+    target_rangefinder_alt = constrain_float(target_rangefinder_alt,rangefinder_state.alt_cm-pos_control.get_leash_down_z(),rangefinder_state.alt_cm+pos_control.get_leash_up_z());
 
-    // calc desired velocity correction from target sonar alt vs actual sonar alt (remove the error already passed to Altitude controller to avoid oscillations)
-    distance_error = (target_sonar_alt - sonar_alt) - (current_alt_target - current_alt);
-    velocity_correction = distance_error * g.sonar_gain;
+    // calc desired velocity correction from target rangefinder alt vs actual rangefinder alt (remove the error already passed to Altitude controller to avoid oscillations)
+    distance_error = (target_rangefinder_alt - rangefinder_state.alt_cm) - (current_alt_target - current_alt);
+    velocity_correction = distance_error * g.rangefinder_gain;
     velocity_correction = constrain_float(velocity_correction, -THR_SURFACE_TRACKING_VELZ_MAX, THR_SURFACE_TRACKING_VELZ_MAX);
 
-    // return combined pilot climb rate + rate to correct sonar alt error
+    // return combined pilot climb rate + rate to correct rangefinder alt error
     return (target_rate + velocity_correction);
+#else
+    return (float)target_rate;
+#endif
 }
 
 // set_accel_throttle_I_from_pilot_throttle - smoothes transition from pilot controlled throttle to autopilot throttle

@@ -7,7 +7,10 @@
 /********************************************************************************/
 bool Plane::start_command(const AP_Mission::Mission_Command& cmd)
 {
-    // log when new commands start
+    // default to non-VTOL loiter
+    auto_state.vtol_loiter = false;
+
+        // log when new commands start
     if (should_log(MASK_LOG_CMD)) {
         DataFlash.Log_Write_Mission_Cmd(mission, cmd);
     }
@@ -390,6 +393,8 @@ void Plane::do_land(const AP_Mission::Mission_Command& cmd)
         auto_state.takeoff_pitch_cd = 1000;
     }
 
+    auto_state.land_slope = 0;
+
 #if RANGEFINDER_ENABLED == ENABLED
     // zero rangefinder state, start to accumulate good samples now
     memset(&rangefinder_state, 0, sizeof(rangefinder_state));
@@ -503,7 +508,7 @@ bool Plane::verify_takeoff()
             // estimation we save our current GPS ground course
             // corrected for summed yaw to set the take off
             // course. This keeps wings level until we are ready to
-            // rotate, and also allows us to cope with arbitary
+            // rotate, and also allows us to cope with arbitrary
             // compass errors for auto takeoff
             float takeoff_course = wrap_PI(radians(gps.ground_course_cd()*0.01f)) - steer_state.locked_course_err;
             takeoff_course = wrap_PI(takeoff_course);
@@ -618,7 +623,7 @@ bool Plane::verify_loiter_time()
     update_loiter(0);
 
     if (loiter.start_time_ms == 0) {
-        if (nav_controller->reached_loiter_target() && loiter.sum_cd > 1) {
+        if (reached_loiter_target() && loiter.sum_cd > 1) {
             // we've reached the target, start the timer
             loiter.start_time_ms = millis();
         }
@@ -636,6 +641,7 @@ bool Plane::verify_loiter_time()
 
     if (result) {
         gcs_send_text(MAV_SEVERITY_WARNING,"Verify nav: LOITER time complete");
+        auto_state.vtol_loiter = false;
     }
     return result;
 }
@@ -645,6 +651,9 @@ bool Plane::verify_loiter_turns()
     bool result = false;
     uint16_t radius = HIGHBYTE(mission.get_current_nav_cmd().p1);
     update_loiter(radius);
+
+    // LOITER_TURNS makes no sense as VTOL
+    auto_state.vtol_loiter = false;
 
     if (condition_value != 0) {
         // primary goal, loiter time
@@ -702,7 +711,7 @@ bool Plane::verify_RTL()
     }
     update_loiter(abs(g.rtl_radius));
 	if (auto_state.wp_distance <= (uint32_t)MAX(g.waypoint_radius,0) || 
-        nav_controller->reached_loiter_target()) {
+        reached_loiter_target()) {
 			gcs_send_text(MAV_SEVERITY_INFO,"Reached HOME");
 			return true;
     } else {
@@ -975,6 +984,11 @@ void Plane::exit_mission_callback()
 
 bool Plane::verify_loiter_heading(bool init)
 {
+    if (quadplane.in_vtol_auto()) {
+        // skip heading verify if in VTOL auto
+        return true;
+    }
+
     //Get the lat/lon of next Nav waypoint after this one:
     AP_Mission::Mission_Command next_nav_cmd;
     if (! mission.get_next_nav_cmd(mission.get_current_nav_index() + 1,
@@ -1015,7 +1029,11 @@ bool Plane::verify_loiter_heading(bool init)
     if (labs(heading_err_cd) <= 1000  ||
             loiter.sum_cd > loiter.total_cd) {
         // Want to head in a straight line from _here_ to the next waypoint instead of center of loiter wp
-        next_WP_loc = current_loc;
+
+        // 0 to xtrack from center of waypoint, 1 to xtrack from tangent exit location
+        if (next_WP_loc.flags.loiter_xtrack) {
+            next_WP_loc = current_loc;
+        }
         return true;
     }
     return false;

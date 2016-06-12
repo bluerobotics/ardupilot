@@ -132,6 +132,27 @@ const AP_Param::GroupInfo AP_MotorsHeli_Single::var_info[] = {
     // @Path: ../RC_Channel/RC_Channel.cpp
     AP_SUBGROUPINFO(_yaw_servo, "SV4_", 15, AP_MotorsHeli_Single, RC_Channel),
 
+    // @Param: RSC_PWM_MIN
+    // @DisplayName: RSC PWM output miniumum
+    // @Description: This sets the PWM output on RSC channel for maximum rotor speed
+    // @Range: 0 2000
+    // @User: Standard
+    AP_GROUPINFO("RSC_PWM_MIN", 16, AP_MotorsHeli_Single, _main_rotor._pwm_min, 1000),
+
+    // @Param: RSC_PWM_MAX
+    // @DisplayName: RSC PWM output maxiumum
+    // @Description: This sets the PWM output on RSC channel for miniumum rotor speed
+    // @Range: 0 2000
+    // @User: Standard
+    AP_GROUPINFO("RSC_PWM_MAX", 17, AP_MotorsHeli_Single, _main_rotor._pwm_max, 2000),
+
+    // @Param: RSC_PWM_REV
+    // @DisplayName: RSC PWM reversal
+    // @Description: This controls reversal of the RSC channel output
+    // @Values: -1:Reversed,1:Normal
+    // @User: Standard
+    AP_GROUPINFO("RSC_PWM_REV", 18, AP_MotorsHeli_Single, _main_rotor._pwm_rev, 1),
+    
     // parameters up to and including 29 are reserved for tradheli
 
     AP_GROUPEND
@@ -300,7 +321,7 @@ void AP_MotorsHeli_Single::calculate_roll_pitch_collective_factors()
         _collectiveFactor[CH_2] = 1;
         _collectiveFactor[CH_3] = 1;
 
-    }else{              //H1 Swashplate, keep servo outputs seperated
+    }else{              //H1 Swashplate, keep servo outputs separated
 
         // roll factors
         _rollFactor[CH_1] = 1;
@@ -368,8 +389,7 @@ void AP_MotorsHeli_Single::move_actuators(float roll_out, float pitch_out, float
     // across the input range instead of stopping when the input hits the constrain value
     // these calculations are based on an assumption of the user specified cyclic_max
     // coming into this equation at 4500 or less
-
-    float total_out = pythagorous2(pitch_out, roll_out);
+    float total_out = norm(pitch_out, roll_out);
 
     if (total_out > (_cyclic_max/4500.0f)) {
         float ratio = (float)(_cyclic_max/4500.0f) / total_out;

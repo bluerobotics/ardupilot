@@ -8,6 +8,7 @@
 #include "AP_NavEKF2_core.h"
 #include <AP_AHRS/AP_AHRS.h>
 #include <AP_Vehicle/AP_Vehicle.h>
+#include <GCS_MAVLink/GCS.h>
 
 #include <stdio.h>
 
@@ -23,6 +24,12 @@ extern const AP_HAL::HAL& hal;
 */
 bool NavEKF2_core::calcGpsGoodToAlign(void)
 {
+    if (inFlight && assume_zero_sideslip() && !use_compass()) {
+        // this is a special case where a plane has launched without magnetometer
+        // is now in the air and needs to align yaw to the GPS and start navigating as soon as possible
+        return true;
+    }
+
     // User defined multiplier to be applied to check thresholds
     float checkScaler = 0.01f*(float)frontend->_gpsCheckScaler;
 
@@ -32,10 +39,8 @@ bool NavEKF2_core::calcGpsGoodToAlign(void)
         magYawResetTimer_ms = imuSampleTime_ms;
     }
     if (imuSampleTime_ms - magYawResetTimer_ms > 5000) {
-        // reset heading and field states
-        Vector3f eulerAngles;
-        getEulerAngles(eulerAngles);
-        stateStruct.quat = calcQuatAndFieldStates(eulerAngles.x, eulerAngles.y);
+        // request reset of heading and magnetic field states
+        magYawResetRequest = true;
         // reset timer to ensure that bad magnetometer data cannot cause a heading reset more often than every 5 seconds
         magYawResetTimer_ms = imuSampleTime_ms;
     }
@@ -78,6 +83,13 @@ bool NavEKF2_core::calcGpsGoodToAlign(void)
     } else if ((frontend->_fusionModeGPS == 0) && !_ahrs->get_gps().have_vertical_velocity()) {
         // If the EKF settings require vertical GPS velocity and the receiver is not outputting it, then fail
         gpsVertVelFail = true;
+        // if we have a 3D fix with no vertical velocity and
+        // EK2_GPS_TYPE=0 then change it to 1. It means the GPS is not
+        // capable of giving a vertical velocity
+        if (_ahrs->get_gps().status() >= AP_GPS::GPS_OK_FIX_3D) {
+            frontend->_fusionModeGPS.set(1);
+            GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_WARNING, "EK2: Changed EK2_GPS_TYPE to 1");
+        }
     } else {
         gpsVertVelFail = false;
     }
@@ -96,7 +108,7 @@ bool NavEKF2_core::calcGpsGoodToAlign(void)
     // This check can only be used if the vehicle is stationary
     bool gpsHorizVelFail;
     if (onGround) {
-        gpsHorizVelFilt = 0.1f * pythagorous2(gpsDataDelayed.vel.x,gpsDataDelayed.vel.y) + 0.9f * gpsHorizVelFilt;
+        gpsHorizVelFilt = 0.1f * norm(gpsDataDelayed.vel.x,gpsDataDelayed.vel.y) + 0.9f * gpsHorizVelFilt;
         gpsHorizVelFilt = constrain_float(gpsHorizVelFilt,-10.0f,10.0f);
         gpsHorizVelFail = (fabsf(gpsHorizVelFilt) > 0.3f*checkScaler) && (frontend->_gpsCheck & MASK_GPS_HORIZ_SPD);
     } else {

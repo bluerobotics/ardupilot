@@ -22,12 +22,14 @@ WIPE_EEPROM=0
 REVERSE_THROTTLE=0
 NO_REBUILD=0
 START_HIL=0
+SITLRCIN=1
 EXTRA_ARGS=""
 MODEL=""
 BREAKPOINT=""
 OVERRIDE_BUILD_TARGET=""
 DELAY_START=0
 DEFAULTS_PATH=""
+MAVLINK_PROTOCOL_VERSION="1"
 
 usage()
 {
@@ -60,6 +62,7 @@ Options:
     -H               start HIL
     -S SPEEDUP       set simulation speedup (1 for wall clock time)
     -d TIME          delays the start of mavproxy by the number of seconds
+    -P VERSION       mavlink protocol version (1 or 2)
 
 mavproxy_options:
     --map            start with a map
@@ -76,7 +79,7 @@ EOF
 
 
 # parse options. Thanks to http://wiki.bash-hackers.org/howto/getopts_tutorial
-while getopts ":I:VgGcj:TA:t:L:l:v:hwf:RNHeMS:DB:b:d:" opt; do
+while getopts ":I:VgGcj:TA:t:L:l:v:hwf:RNHeMS:DB:b:d:P:" opt; do
   case $opt in
     v)
       VEHICLE=$OPTARG
@@ -148,6 +151,9 @@ while getopts ":I:VgGcj:TA:t:L:l:v:hwf:RNHeMS:DB:b:d:" opt; do
       ;;
     b)
       OVERRIDE_BUILD_TARGET="$OPTARG"
+      ;;
+    P)
+      MAVLINK_PROTOCOL_VERSION="$OPTARG"
       ;;
     h)
       usage
@@ -285,6 +291,16 @@ case $FRAME in
         MODEL="$FRAME"
         DEFAULTS_PATH="$autotest/Helicopter.parm"
 	;;
+    singlecopter*)
+	BUILD_TARGET="sitl-single"
+        MODEL="$FRAME"
+        DEFAULTS_PATH="$autotest/SingleCopter.parm"
+	;;
+    coaxcopter*)
+	BUILD_TARGET="sitl-coax"
+        MODEL="$FRAME"
+        DEFAULTS_PATH="$autotest/CoaxCopter.parm"
+	;;
     IrisRos)
 	BUILD_TARGET="sitl"
         DEFAULTS_PATH="$autotest/copter_params.parm"
@@ -303,6 +319,11 @@ case $FRAME in
         MODEL="$FRAME"
         check_jsbsim_version
         DEFAULTS_PATH="$autotest/ArduPlane.parm"
+	;;
+    quadplane-tilttri*)
+	BUILD_TARGET="sitl-tri"
+        MODEL="$FRAME"
+        DEFAULTS_PATH="$autotest/quadplane-tilttri.parm"
 	;;
     quadplane*)
 	BUILD_TARGET="sitl"
@@ -323,6 +344,15 @@ case $FRAME in
 	BUILD_TARGET="sitl"
         MODEL="$FRAME"
         DEFAULTS_PATH="$autotest/plane.parm"
+	;;
+    rover-skid)
+	BUILD_TARGET="sitl"
+        MODEL="$FRAME"
+        DEFAULTS_PATH="$autotest/Rover-skid.parm"
+	;;
+    flightaxis*)
+        MODEL="$FRAME"
+        SITLRCIN=0
 	;;
     *-heli)
 	BUILD_TARGET="sitl-heli"
@@ -455,7 +485,10 @@ trap kill_tasks SIGINT
 # mavproxy.py --master tcp:127.0.0.1:5760 --sitl 127.0.0.1:5501 --out 127.0.0.1:14550 --out 127.0.0.1:14551 
 options=""
 if [ $START_HIL == 0 ]; then
-options="--master $MAVLINK_PORT --sitl $SIMOUT_PORT"
+    options="--master $MAVLINK_PORT"
+    if [ $SITLRCIN == 1 ]; then
+        options="$options --sitl $SIMOUT_PORT"
+    fi
 fi
 
 # If running inside of a vagrant guest, then we probably want to forward our mavlink out to the containing host OS
@@ -476,6 +509,10 @@ if [ $USE_MAVLINK_GIMBAL == 1 ]; then
 fi
 if [ $DELAY_START != 0 ]; then
   sleep $DELAY_START
+fi
+
+if [ $MAVLINK_PROTOCOL_VERSION == 2 ]; then
+    options="$options --mav20"
 fi
 
 if [ -f /usr/bin/cygstart ]; then

@@ -53,9 +53,6 @@
 #elif CONFIG_HAL_BOARD == HAL_BOARD_PX4
 # define BATTERY_PIN_1	  -1
 # define CURRENT_PIN_1	  -1
-#elif CONFIG_HAL_BOARD == HAL_BOARD_FLYMAPLE
-# define BATTERY_PIN_1     20
-# define CURRENT_PIN_1	   19
 #elif CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 # define BATTERY_PIN_1     -1
 # define CURRENT_PIN_1	   -1
@@ -302,14 +299,4 @@
 
 #ifndef SONAR_ENABLED
 # define SONAR_ENABLED       DISABLED
-#endif
-
-/*
-  build a firmware version string.
-  GIT_VERSION comes from Makefile builds
-*/
-#ifndef GIT_VERSION
-#define FIRMWARE_STRING THISFIRMWARE
-#else
-#define FIRMWARE_STRING THISFIRMWARE " (" GIT_VERSION ")"
 #endif

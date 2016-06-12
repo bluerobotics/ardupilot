@@ -145,6 +145,10 @@ void NavEKF2_core::writeOptFlowMeas(uint8_t &rawFlowQuality, Vector2f &rawFlowRa
 // check for new magnetometer data and update store measurements if available
 void NavEKF2_core::readMagData()
 {
+    if (!_ahrs->get_compass()) {
+        allMagSensorsFailed = true;
+        return;        
+    }
     // If we are a vehicle with a sideslip constraint to aid yaw estimation and we have timed out on our last avialable
     // magnetometer, then declare the magnetometers as failed for this flight
     uint8_t maxCount = _ahrs->get_compass()->get_count();
@@ -156,6 +160,8 @@ void NavEKF2_core::readMagData()
     // do not accept new compass data faster than 14Hz (nominal rate is 10Hz) to prevent high processor loading
     // because magnetometer fusion is an expensive step and we could overflow the FIFO buffer
     if (use_compass() && _ahrs->get_compass()->last_update_usec() - lastMagUpdate_us > 70000) {
+        frontend->logging.log_compass = true;
+
         // If the magnetometer has timed out (been rejected too long) we find another magnetometer to use if available
         // Don't do this if we are on the ground because there can be magnetic interference and we need to know if there is a problem
         // before taking off. Don't do this within the first 30 seconds from startup because the yaw error could be due to large yaw gyro bias affsets
@@ -365,8 +371,8 @@ void NavEKF2_core::readGpsData()
             // read the NED velocity from the GPS
             gpsDataNew.vel = _ahrs->get_gps().velocity();
 
-            // Use the speed accuracy from the GPS if available, otherwise set it to zero.
-            // Apply a decaying envelope filter with a 5 second time constant to the raw speed accuracy data
+            // Use the speed and position accuracy from the GPS if available, otherwise set it to zero.
+            // Apply a decaying envelope filter with a 5 second time constant to the raw accuracy data
             float alpha = constrain_float(0.0002f * (lastTimeGpsReceived_ms - secondLastGpsTime_ms),0.0f,1.0f);
             gpsSpdAccuracy *= (1.0f - alpha);
             float gpsSpdAccRaw;
@@ -374,6 +380,15 @@ void NavEKF2_core::readGpsData()
                 gpsSpdAccuracy = 0.0f;
             } else {
                 gpsSpdAccuracy = MAX(gpsSpdAccuracy,gpsSpdAccRaw);
+                gpsSpdAccuracy = MIN(gpsSpdAccuracy,50.0f);
+            }
+            gpsPosAccuracy *= (1.0f - alpha);
+            float gpsPosAccRaw;
+            if (!_ahrs->get_gps().horizontal_accuracy(gpsPosAccRaw)) {
+                gpsPosAccuracy = 0.0f;
+            } else {
+                gpsPosAccuracy = MAX(gpsPosAccuracy,gpsPosAccRaw);
+                gpsPosAccuracy = MIN(gpsPosAccuracy,100.0f);
             }
 
             // check if we have enough GPS satellites and increase the gps noise scaler if we don't
@@ -422,13 +437,7 @@ void NavEKF2_core::readGpsData()
                 gpsNotAvailable = false;
             }
 
-            // Commence GPS aiding when able to
-            if (readyToUseGPS() && PV_AidingMode != AID_ABSOLUTE) {
-                PV_AidingMode = AID_ABSOLUTE;
-                // Initialise EKF position and velocity states to last GPS measurement
-                ResetPosition();
-                ResetVelocity();
-            }
+            frontend->logging.log_gps = true;
 
         } else {
             // report GPS fix status
@@ -492,6 +501,7 @@ bool NavEKF2_core::readDeltaAngle(uint8_t ins_index, Vector3f &dAng) {
 
     if (ins_index < ins.get_gyro_count()) {
         ins.get_delta_angle(ins_index,dAng);
+        frontend->logging.log_imu = true;
         return true;
     }
     return false;
@@ -508,6 +518,7 @@ void NavEKF2_core::readBaroData()
     // check to see if baro measurement has changed so we know if a new measurement has arrived
     // do not accept data at a faster rate than 14Hz to avoid overflowing the FIFO buffer
     if (frontend->_baro.get_last_update() - lastBaroReceived_ms > 70) {
+        frontend->logging.log_baro = true;
 
         baroDataNew.hgt = frontend->_baro.get_altitude();
 

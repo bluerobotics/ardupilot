@@ -34,10 +34,10 @@ COPTS           =   -ffunction-sections -fdata-sections -fsigned-char
 ASOPTS          =   -x assembler-with-cpp 
 
 # features: TODO detect dependecy and make them optional
-HAVE_LTTNG=
+HAVE_LTTNG_UST=
 
-ifeq ($(HAVE_LTTNG),1)
-DEFINES        += -DPERF_LTTNG=1
+ifeq ($(HAVE_LTTNG_UST),1)
+DEFINES        += -DHAVE_LTTNG_UST=1
 LIBS           += -llttng-ust -ldl
 endif
 
@@ -62,7 +62,7 @@ ifneq ($(SYSTYPE),Darwin)
 LDFLAGS        +=   -Wl,--gc-sections -Wl,-Map -Wl,$(SKETCHMAP)
 endif
 
-LIBS ?= -lm -pthread
+LIBS ?= -lm -lrt -pthread
 ifneq ($(findstring CYGWIN, $(SYSTYPE)),)
 LIBS += -lwinmm
 endif

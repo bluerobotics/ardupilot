@@ -123,7 +123,7 @@ static void set_normal_priority(void *sem)
 }
 
 /*
-  a varient of delay_microseconds that boosts priority to
+  a variant of delay_microseconds that boosts priority to
   APM_MAIN_PRIORITY_BOOST for APM_MAIN_PRIORITY_BOOST_USEC
   microseconds when the time completes. This significantly improves
   the regularity of timing of the main loop as it takes 
@@ -222,6 +222,13 @@ void PX4Scheduler::resume_timer_procs()
 
 void PX4Scheduler::reboot(bool hold_in_bootloader) 
 {
+    // disarm motors to ensure they are off during a bootloader upload
+    hal.rcout->force_safety_on();
+    hal.rcout->force_safety_no_wait();
+
+    // delay to ensure the async force_saftey operation completes
+    delay(500);
+
 	px4_systemreset(hold_in_bootloader);
 }
 
@@ -280,8 +287,10 @@ void *PX4Scheduler::_timer_thread(void *arg)
 
         if (px4_ran_overtime && AP_HAL::millis() - last_ran_overtime > 2000) {
             last_ran_overtime = AP_HAL::millis();
+#if 0
             printf("Overtime in task %d\n", (int)AP_Scheduler::current_task);
             hal.console->printf("Overtime in task %d\n", (int)AP_Scheduler::current_task);
+#endif
         }
     }
     return NULL;

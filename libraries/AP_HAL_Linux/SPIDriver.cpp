@@ -1,17 +1,18 @@
+#include "SPIDriver.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/spi/spidev.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <AP_Common/AP_Common.h>
 #include <AP_HAL/AP_HAL.h>
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
-#include "SPIDriver.h"
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <errno.h>
-#include <sys/ioctl.h>
-#include <linux/spi/spidev.h>
 #include "GPIO.h"
 
 using namespace Linux;
@@ -41,6 +42,9 @@ SPIDeviceDriver SPIDeviceManager::_device[] = {
     /* MPU9250 is restricted to 1MHz for non-data and interrupt registers */
     SPIDeviceDriver("mpu9250",    0, 1, AP_HAL::SPIDevice_MPU9250, SPI_MODE_0, 8, SPI_CS_KERNEL,  1*MHZ, 20*MHZ),
     SPIDeviceDriver("ublox",      0, 0, AP_HAL::SPIDevice_Ublox, SPI_MODE_0, 8, SPI_CS_KERNEL,  5*MHZ, 5*MHZ),
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NAVIO2
+    SPIDeviceDriver("lsm9ds1_m",  0, 2, AP_HAL::SPIDevice_LSM9DS1_M, SPI_MODE_0, 8, SPI_CS_KERNEL,  1*MHZ, 10*MHZ),
+#endif
 };
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBRAIN2 || \
       CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXFMINI
@@ -68,8 +72,12 @@ SPIDeviceDriver SPIDeviceManager::_device[] = {
 };
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BH
 SPIDeviceDriver SPIDeviceManager::_device[] = {
-    SPIDeviceDriver("mpu9250", 0, 0, AP_HAL::SPIDevice_MPU9250, SPI_MODE_0, 8, RPI_GPIO_7, 1*MHZ, 20*MHZ),
-    SPIDeviceDriver("ublox", 0, 0, AP_HAL::SPIDevice_Ublox, SPI_MODE_0, 8, RPI_GPIO_8, 250*KHZ, 5*MHZ),
+    SPIDeviceDriver("mpu9250", 0, 0, AP_HAL::SPIDevice_MPU9250, SPI_MODE_0, 8, RPI_GPIO_7, 1*MHZ,   20*MHZ),
+    SPIDeviceDriver("ublox",   0, 0, AP_HAL::SPIDevice_Ublox,   SPI_MODE_0, 8, RPI_GPIO_8, 250*KHZ, 5*MHZ),
+};
+#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BEBOP
+SPIDeviceDriver SPIDeviceManager::_device[] = {
+    SPIDeviceDriver("bebop", 1, 0, AP_HAL::SPIDevice_Bebop, SPI_MODE_0, 8, SPI_CS_KERNEL,  320*KHZ, 320*KHZ),
 };
 #else
 // empty device table
@@ -284,5 +292,3 @@ AP_HAL::SPIDeviceDriver *SPIDeviceManager::device(enum AP_HAL::SPIDeviceType dev
     }
     return NULL;
 }
-
-#endif // CONFIG_HAL_BOARD

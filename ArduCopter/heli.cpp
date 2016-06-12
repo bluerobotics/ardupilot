@@ -44,10 +44,10 @@ void Copter::check_dynamic_flight(void)
         moving = (motors.get_throttle() > 0.8f || ahrs.pitch_sensor < -1500);
     }
 
-    if (!moving && sonar_enabled && sonar.status() == RangeFinder::RangeFinder_Good) {
+    if (!moving && rangefinder_state.enabled && rangefinder.status() == RangeFinder::RangeFinder_Good) {
         // when we are more than 2m from the ground with good
         // rangefinder lock consider it to be dynamic flight
-        moving = (sonar.distance_cm() > 200);
+        moving = (rangefinder.distance_cm() > 200);
     }
     
     if (moving) {
@@ -143,7 +143,7 @@ void Copter::heli_update_rotor_speed_targets()
     // get rotor control method
     uint8_t rsc_control_mode = motors.get_rsc_mode();
 
-    float rsc_control_deglitched = rotor_speed_deglitch_filter.apply((float)g.rc_8.control_in/1000.0f);
+    float rsc_control_deglitched = rotor_speed_deglitch_filter.apply((float)g.rc_8.get_control_in()) * 0.001f;
 
     switch (rsc_control_mode) {
         case ROTOR_CONTROL_MODE_SPEED_PASSTHROUGH:

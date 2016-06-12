@@ -67,7 +67,7 @@
 ### Maintainers ###
 >> Ardupilot is comprised of several parts, vehicles and boards. The list below
 >> contains the people that regularly contribute to the project and are responsible
->> for reviewing patches on their specific area. See [CONTRIBUTING.md](CONTRIBUTING.md)
+>> for reviewing patches on their specific area. See [CONTRIBUTING.md](.github/CONTRIBUTING.md)
 >> for more information.
 >>
 >> - [Andrew Tridgell](https://github.com/tridge)
@@ -98,8 +98,6 @@
 >>   - ***Board***: NavIO
 >> - [Emile Castelnuovo](https://github.com/emilecastelnuovo)
 >>   - ***Board***: VRBrain
->> - [Mike McCauley](#)
->>   - ***Board***: Flymaple
 >> - [Julien BERAUD](https://github.com/jberaud)
 >>   - ***Board***: Bebop & Bebop 2
 >> - [Pritam Ghanghas](https://github.com/pritamghanghas)

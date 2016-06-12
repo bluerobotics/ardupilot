@@ -264,7 +264,7 @@ void AC_WPNav::calc_loiter_desired_velocity(float nav_dt, float ekfGndSpdLimit)
     Vector2f des_accel_diff = (desired_accel - _loiter_desired_accel);
 
     // constrain and scale the desired acceleration
-    float des_accel_change_total = pythagorous2(des_accel_diff.x, des_accel_diff.y);
+    float des_accel_change_total = norm(des_accel_diff.x, des_accel_diff.y);
     float accel_change_max = _loiter_jerk_max_cmsss * nav_dt;
     
     if (_loiter_jerk_max_cmsss > 0.0f && des_accel_change_total > accel_change_max && des_accel_change_total > 0.0f) {
@@ -591,7 +591,7 @@ bool AC_WPNav::advance_wp_target_along_track(float dt)
     track_error = curr_delta - track_covered_pos;
 
     // calculate the horizontal error
-    float track_error_xy = pythagorous2(track_error.x, track_error.y);
+    float track_error_xy = norm(track_error.x, track_error.y);
 
     // calculate the vertical error
     float track_error_z = fabsf(track_error.z);
@@ -711,7 +711,7 @@ float AC_WPNav::get_wp_distance_to_destination() const
 {
     // get current location
     Vector3f curr = _inav.get_position();
-    return pythagorous2(_destination.x-curr.x,_destination.y-curr.y);
+    return norm(_destination.x-curr.x,_destination.y-curr.y);
 }
 
 /// get_wp_bearing_to_destination - get bearing to next waypoint in centi-degrees
@@ -777,7 +777,7 @@ void AC_WPNav::check_wp_leash_length()
 void AC_WPNav::calculate_wp_leash_length()
 {
     // length of the unit direction vector in the horizontal
-    float pos_delta_unit_xy = pythagorous2(_pos_delta_unit.x, _pos_delta_unit.y);
+    float pos_delta_unit_xy = norm(_pos_delta_unit.x, _pos_delta_unit.y);
     float pos_delta_unit_z = fabsf(_pos_delta_unit.z);
 
     float speed_z;
@@ -1071,7 +1071,7 @@ bool AC_WPNav::advance_spline_target_along_track(float dt)
         track_error.z -= terr_offset;
 
         // calculate the horizontal error
-        float track_error_xy = pythagorous2(track_error.x, track_error.y);
+        float track_error_xy = norm(track_error.x, track_error.y);
 
         // calculate the vertical error
         float track_error_z = fabsf(track_error.z);
@@ -1154,12 +1154,24 @@ void AC_WPNav::calc_spline_pos_vel(float spline_time, Vector3f& position, Vector
 // get terrain's altitude (in cm above the ekf origin) at the current position (+ve means terrain below vehicle is above ekf origin's altitude)
 bool AC_WPNav::get_terrain_offset(float& offset_cm)
 {
+#if AP_TERRAIN_AVAILABLE
+    // use range finder if connected
+    if (_rangefinder_use) {
+        if (_rangefinder_healthy) {
+            offset_cm = _inav.get_altitude() - _rangefinder_alt_cm;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    // use terrain database
     float terr_alt = 0.0f;
     if (_terrain != NULL && _terrain->height_above_terrain(terr_alt, true)) {
         offset_cm = _inav.get_altitude() - (terr_alt * 100.0f);
         return true;
     }
-
+#endif
     return false;
 }
 

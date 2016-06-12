@@ -1,5 +1,28 @@
 APM:Copter Release Notes:
 ------------------------------------------------------------------
+Copter 3.4.0-rc1 28-May-2016
+Changes from 3.3.3
+1) EKF2 allows "boat mode" (attitude initialisation without gyro calibration)
+2) Throw mode
+3) Terrain following:
+    a) support terrain altitudes during missions using GCS's map data or rangefinder (i.e. Lidar)
+    b) LightWare range finder driver fixes (I2C works)
+    c) Bebop sonar support
+4) Precision Landing using IRLock sensor
+5) Attitude controller re-organisation (all parameter changes automatically moved and scales adjusted)
+    a) RATE_ parameters become ATC_RAT_ (i.e. RATE_RLL_P becomes ATC_RAT_RLL_P) 
+    b) Rate Roll, Pitch, Yaw P, D are reduced by 10% for X, V, H frames, increased by 27% for all other frames
+    c) STB_ parameters becomes ATC_ANG_ (i.e. STB_RLL_P becomes ATC_ANG_RLL_P)
+6) Motors library improvements:
+    a) support OneShot ESCs (set MOT_PWM_TYPE to 0 for Normal, 1 for OneShot or 2 for OneShot125)
+    b) TriCopter compensates for tail servo angle
+    c) SingleCopter, CoaxCopter adjust control surfaces based on throttle output
+    d) MOT_PWM_MIN, MAX allow specifying output ranges to ESCs which are difference from throttle input channel (i.e. RC3)
+    e) TradHeli servo objects moved into heli class (HSV_ parameters become H_SV_)
+7) uAvionix Ping sensor support (ADS-B vehicles appear on GCS, avoidance will come in future release) 
+8) Safety:
+    a) warning if GPS update rate is slow (under 5hz, does not stop arming) 
+------------------------------------------------------------------
 Copter 3.3.3 24-Feb-2016 / 3.3.3-rc2 27-Jan-2016
 Changes from 3.3.3-rc1
 1) bug fix to Guided mode's velocity controller to run at 400hz
@@ -178,7 +201,7 @@ Changes from 3.3-rc3
     b) H_COLYAW param can be float 
 8) Small Improvements / Bug Fixes:
     a) reduced spline overshoot after very long track followed by very short track
-    b) log entire mission to dataflash whenver it's uploaded
+    b) log entire mission to dataflash whenever it's uploaded
     c) altitude reported if vehicle takes off before GPS lock
     d) high speed logging of IMU
     e) STOP flight mode renamed to BRAKE and aux switch option added
@@ -332,7 +355,7 @@ Changes from 3.2-rc7
 3) sensor health flags sent to GCS only after initialisation to remove false alerts 
 4) suppress bad terrain data alerts
 5) Bug Fix:
-    a)PX4 dataflash RAM useage reduced to 8k so it works again  
+    a)PX4 dataflash RAM usage reduced to 8k so it works again  
 ------------------------------------------------------------------
 ArduCopter 3.2-rc7 04-Sep-2014
 Changes from 3.2-rc6
@@ -694,7 +717,7 @@ Improvements over 3.0.0-rc3
 6) RTL returns to initial yaw heading before descending
 7) safe features:
     i) check for gps lock when entering failsafe
-    ii) pre-arm check for mag field lenght
+    ii) pre-arm check for mag field length
     iii) pre-arm check for board voltage between 4.5v ~ 5.8V
     iv) beep twice during arming
     v) GPS failsafe enabled by default (will LAND if loses GPS in Loiter, AUTO, Guided modes)
@@ -794,7 +817,7 @@ Improvements over 2.9-rc3:
 ArduCopter 2.9-rc3 11-Jan-2013
 Improvements over 2.9-rc2:
 1) alt hold with sonar improvements - now on by default (Leonard/Randy)
-2) performance and memory useage improvements (Tridge/Randy)
+2) performance and memory usage improvements (Tridge/Randy)
 3) increase APM1 baro pressure read from 5hz to 8.3hz to improve alt hold (Randy)
 4) bug fix: altitude error reported to GCS (Randy)
 5) limit inertial nav's max accel offset correction to 100cm/s/s to speed up recovery after hard impacts (Randy)_

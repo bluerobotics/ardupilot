@@ -188,6 +188,11 @@ public:
         return nullptr;
     }
 
+    // is the EKF backend doing its own sensor logging?
+    virtual bool have_ekf_logging(void) const {
+        return false;
+    }
+    
     // Euler angles (radians)
     float roll;
     float pitch;
@@ -289,11 +294,8 @@ public:
     }
 
     // return ground speed estimate in meters/second. Used by ground vehicles.
-    float groundspeed(void) const {
-        if (_gps.status() <= AP_GPS::NO_FIX) {
-            return 0.0f;
-        }
-        return _gps.ground_speed();
+    float groundspeed(void) {
+        return groundspeed_vector().length();
     }
 
     // return true if we will use compass for yaw

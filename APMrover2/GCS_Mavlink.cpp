@@ -1,6 +1,9 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
 #include "Rover.h"
+#include "version.h"
+
+#include "GCS_Mavlink.h"
 
 // default sensors are present and healthy: gyro, accelerometer, rate_control, attitude_stabilization, yaw_position, altitude control, x/y position control, motor_control
 #define MAVLINK_SENSOR_PRESENT_DEFAULT (MAV_SYS_STATUS_SENSOR_3D_GYRO | MAV_SYS_STATUS_SENSOR_3D_ACCEL | MAV_SYS_STATUS_SENSOR_ANGULAR_RATE_CONTROL | MAV_SYS_STATUS_SENSOR_ATTITUDE_STABILIZATION | MAV_SYS_STATUS_SENSOR_YAW_POSITION | MAV_SYS_STATUS_SENSOR_XY_POSITION_CONTROL | MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS | MAV_SYS_STATUS_AHRS)
@@ -65,13 +68,10 @@ void Rover::send_heartbeat(mavlink_channel_t chan)
     // indicate we have set a custom mode
     base_mode |= MAV_MODE_FLAG_CUSTOM_MODE_ENABLED;
 
-    mavlink_msg_heartbeat_send(
-        chan,
-        MAV_TYPE_GROUND_ROVER,
-        MAV_AUTOPILOT_ARDUPILOTMEGA,
-        base_mode,
-        custom_mode,
-        system_status);
+    gcs[chan-MAVLINK_COMM_0].send_heartbeat(MAV_TYPE_GROUND_ROVER,
+                                            base_mode,
+                                            custom_mode,
+                                            system_status);
 }
 
 void Rover::send_attitude(mavlink_channel_t chan)
@@ -228,7 +228,7 @@ void Rover::send_nav_controller_output(mavlink_channel_t chan)
     mavlink_msg_nav_controller_output_send(
         chan,
         lateral_acceleration, // use nav_roll to hold demanded Y accel
-        gps.ground_speed() * ins.get_gyro().z, // use nav_pitch to hold actual Y accel
+        ahrs.groundspeed() * ins.get_gyro().z, // use nav_pitch to hold actual Y accel
         nav_controller->nav_bearing_cd() * 0.01f,
         nav_controller->target_bearing_cd() * 0.01f,
         wp_distance,
@@ -279,14 +279,14 @@ void Rover::send_radio_out(mavlink_channel_t chan)
         chan,
         micros(),
         0,     // port
-        RC_Channel::rc_channel(0)->radio_out,
-        RC_Channel::rc_channel(1)->radio_out,
-        RC_Channel::rc_channel(2)->radio_out,
-        RC_Channel::rc_channel(3)->radio_out,
-        RC_Channel::rc_channel(4)->radio_out,
-        RC_Channel::rc_channel(5)->radio_out,
-        RC_Channel::rc_channel(6)->radio_out,
-        RC_Channel::rc_channel(7)->radio_out);
+        RC_Channel::rc_channel(0)->get_radio_out(),
+        RC_Channel::rc_channel(1)->get_radio_out(),
+        RC_Channel::rc_channel(2)->get_radio_out(),
+        RC_Channel::rc_channel(3)->get_radio_out(),
+        RC_Channel::rc_channel(4)->get_radio_out(),
+        RC_Channel::rc_channel(5)->get_radio_out(),
+        RC_Channel::rc_channel(6)->get_radio_out(),
+        RC_Channel::rc_channel(7)->get_radio_out());
 #endif
 }
 
@@ -295,7 +295,7 @@ void Rover::send_vfr_hud(mavlink_channel_t chan)
     mavlink_msg_vfr_hud_send(
         chan,
         gps.ground_speed(),
-        gps.ground_speed(),
+        ahrs.groundspeed(),
         (ahrs.yaw_sensor / 100) % 360,
         (uint16_t)(100 * fabsf(channel_throttle->norm_output())),
         current_loc.alt / 100.0,
@@ -363,15 +363,29 @@ void Rover::send_rangefinder(mavlink_channel_t chan)
 void Rover::send_pid_tuning(mavlink_channel_t chan)
 {
     const Vector3f &gyro = ahrs.get_gyro();
+    const DataFlash_Class::PID_Info *pid_info;
     if (g.gcs_pid_mask & 1) {
-        const DataFlash_Class::PID_Info &pid_info = steerController.get_pid_info();
+        pid_info = &steerController.get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_STEER, 
-                                    pid_info.desired,
+                                    pid_info->desired,
                                     degrees(gyro.z),
-                                    pid_info.FF,
-                                    pid_info.P,
-                                    pid_info.I,
-                                    pid_info.D);
+                                    pid_info->FF,
+                                    pid_info->P,
+                                    pid_info->I,
+                                    pid_info->D);
+        if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
+            return;
+        }
+    }
+    if (g.gcs_pid_mask & 2) {
+        pid_info = &g.pidSpeedThrottle.get_pid_info();
+        mavlink_msg_pid_tuning_send(chan, PID_TUNING_ACCZ, 
+                                    pid_info->desired,
+                                    0,
+                                    0,
+                                    pid_info->P,
+                                    pid_info->I,
+                                    pid_info->D);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -383,27 +397,15 @@ void Rover::send_current_waypoint(mavlink_channel_t chan)
     mavlink_msg_mission_current_send(chan, mission.get_current_nav_index());
 }
 
-// are we still delaying telemetry to try to avoid Xbee bricking?
-bool Rover::telemetry_delayed(mavlink_channel_t chan)
+uint32_t GCS_MAVLINK_Rover::telem_delay() const
 {
-    uint32_t tnow = millis() >> 10;
-    if (tnow > (uint32_t)g.telem_delay) {
-        return false;
-    }
-    if (chan == MAVLINK_COMM_0 && hal.gpio->usb_connected()) {
-        // this is USB telemetry, so won't be an Xbee
-        return false;
-    }
-    // we're either on the 2nd UART, or no USB cable is connected
-    // we need to delay telemetry by the TELEM_DELAY time
-    return true;
+    return (uint32_t)(rover.g.telem_delay);
 }
 
-
 // try to send a message, return false if it won't fit in the serial tx buffer
-bool GCS_MAVLINK::try_send_message(enum ap_message id)
+bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
 {
-    if (rover.telemetry_delayed(chan)) {
+    if (telemetry_delayed(chan)) {
         return false;
     }
 
@@ -418,7 +420,7 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
     switch (id) {
     case MSG_HEARTBEAT:
         CHECK_PAYLOAD_SIZE(HEARTBEAT);
-        rover.gcs[chan-MAVLINK_COMM_0].last_heartbeat_time = AP_HAL::millis();        
+        last_heartbeat_time = AP_HAL::millis();        
         rover.send_heartbeat(chan);
         return true;
 
@@ -426,12 +428,12 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
         CHECK_PAYLOAD_SIZE(SYS_STATUS);
         rover.send_extended_status1(chan);
         CHECK_PAYLOAD_SIZE(POWER_STATUS);
-        rover.gcs[chan-MAVLINK_COMM_0].send_power_status();
+        send_power_status();
         break;
 
     case MSG_EXTENDED_STATUS2:
         CHECK_PAYLOAD_SIZE(MEMINFO);
-        rover.gcs[chan-MAVLINK_COMM_0].send_meminfo();
+        send_meminfo();
         break;
 
     case MSG_ATTITUDE:
@@ -458,12 +460,12 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
 
     case MSG_GPS_RAW:
         CHECK_PAYLOAD_SIZE(GPS_RAW_INT);
-        rover.gcs[chan-MAVLINK_COMM_0].send_gps_raw(rover.gps);
+        send_gps_raw(rover.gps);
         break;
 
     case MSG_SYSTEM_TIME:
         CHECK_PAYLOAD_SIZE(SYSTEM_TIME);
-        rover.gcs[chan-MAVLINK_COMM_0].send_system_time(rover.gps);
+        send_system_time(rover.gps);
         break;
 
     case MSG_SERVO_OUT:
@@ -473,7 +475,7 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
 
     case MSG_RADIO_IN:
         CHECK_PAYLOAD_SIZE(RC_CHANNELS_RAW);
-        rover.gcs[chan-MAVLINK_COMM_0].send_radio_in(rover.receiver_rssi);
+        send_radio_in(rover.receiver_rssi);
         break;
 
     case MSG_RADIO_OUT:
@@ -488,12 +490,12 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
 
     case MSG_RAW_IMU1:
         CHECK_PAYLOAD_SIZE(RAW_IMU);
-        rover.gcs[chan-MAVLINK_COMM_0].send_raw_imu(rover.ins, rover.compass);
+        send_raw_imu(rover.ins, rover.compass);
         break;
 
     case MSG_RAW_IMU3:
         CHECK_PAYLOAD_SIZE(SENSOR_OFFSETS);
-        rover.gcs[chan-MAVLINK_COMM_0].send_sensor_offsets(rover.ins, rover.compass, rover.barometer);
+        send_sensor_offsets(rover.ins, rover.compass, rover.barometer);
         break;
 
     case MSG_CURRENT_WAYPOINT:
@@ -503,12 +505,12 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
 
     case MSG_NEXT_PARAM:
         CHECK_PAYLOAD_SIZE(PARAM_VALUE);
-        rover.gcs[chan-MAVLINK_COMM_0].queued_param_send();
+        queued_param_send();
         break;
 
     case MSG_NEXT_WAYPOINT:
         CHECK_PAYLOAD_SIZE(MISSION_REQUEST);
-        rover.gcs[chan-MAVLINK_COMM_0].queued_waypoint_send();
+        queued_waypoint_send();
         break;
 
     case MSG_STATUSTEXT:
@@ -517,7 +519,7 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
 
     case MSG_AHRS:
         CHECK_PAYLOAD_SIZE(AHRS);
-        rover.gcs[chan-MAVLINK_COMM_0].send_ahrs(rover.ahrs);
+        send_ahrs(rover.ahrs);
         break;
 
     case MSG_SIMSTATE:
@@ -556,7 +558,7 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
 
     case MSG_BATTERY2:
         CHECK_PAYLOAD_SIZE(BATTERY2);
-        rover.gcs[chan-MAVLINK_COMM_0].send_battery2(rover.battery);
+        send_battery2(rover.battery);
         break;
 
     case MSG_CAMERA_FEEDBACK:
@@ -694,42 +696,8 @@ const AP_Param::GroupInfo GCS_MAVLINK::var_info[] = {
     AP_GROUPEND
 };
 
-
-// see if we should send a stream now. Called at 50Hz
-bool GCS_MAVLINK::stream_trigger(enum streams stream_num)
-{
-    if (stream_num >= NUM_STREAMS) {
-        return false;
-    }
-    float rate = (uint8_t)streamRates[stream_num].get();
-
-    // send at a much lower rate while handling waypoints and
-    // parameter sends
-    if ((stream_num != STREAM_PARAMS) && 
-        (waypoint_receiving || _queued_parameter != NULL)) {
-        rate *= 0.25f;
-    }
-
-    if (rate <= 0) {
-        return false;
-    }
-
-    if (stream_ticks[stream_num] == 0) {
-        // we're triggering now, setup the next trigger point
-        if (rate > 50) {
-            rate = 50;
-        }
-        stream_ticks[stream_num] = (50 / rate) - 1 + stream_slowdown;
-        return true;
-    }
-
-    // count down at 50Hz
-    stream_ticks[stream_num]--;
-    return false;
-}
-
 void
-GCS_MAVLINK::data_stream_send(void)
+GCS_MAVLINK_Rover::data_stream_send(void)
 {
     rover.gcs_out_of_time = false;
 
@@ -836,7 +804,7 @@ GCS_MAVLINK::data_stream_send(void)
 
 
 
-bool GCS_MAVLINK::handle_guided_request(AP_Mission::Mission_Command &cmd)
+bool GCS_MAVLINK_Rover::handle_guided_request(AP_Mission::Mission_Command &cmd)
 {
     if (rover.control_mode != GUIDED) {
         // only accept position updates when in GUIDED mode
@@ -851,12 +819,12 @@ bool GCS_MAVLINK::handle_guided_request(AP_Mission::Mission_Command &cmd)
     return true;
 }
 
-void GCS_MAVLINK::handle_change_alt_request(AP_Mission::Mission_Command &cmd)
+void GCS_MAVLINK_Rover::handle_change_alt_request(AP_Mission::Mission_Command &cmd)
 {
     // nothing to do
 }
 
-void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
+void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
 {
     switch (msg->msgid) {
 
@@ -896,7 +864,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
             // Sets the region of interest (ROI) for the camera
             case MAV_CMD_DO_SET_ROI:
                 // sanity check location
-                if (fabsf(packet.param5) > 90.0f || fabsf(packet.param6) > 180.0f) {
+                if (!check_latlng(packet.param5, packet.param6)) {
                     break;
                 }
                 Location roi_loc;
@@ -968,7 +936,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
                         result = MAV_RESULT_FAILED;
                     }
                 } else if (is_equal(packet.param3,1.0f)) {
-                    rover.init_barometer();
+                    rover.init_barometer(false);
                     result = MAV_RESULT_ACCEPTED;
                 } else if (is_equal(packet.param4,1.0f)) {
                     rover.trim_radio();
@@ -1004,18 +972,22 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
                 }
                 break;
 
-            case MAV_CMD_PREFLIGHT_SET_SENSOR_OFFSETS:
-                if (is_equal(packet.param1,2.0f)) {
-                    // save first compass's offsets
-                    rover.compass.set_and_save_offsets(0, packet.param2, packet.param3, packet.param4);
-                    result = MAV_RESULT_ACCEPTED;
+        case MAV_CMD_PREFLIGHT_SET_SENSOR_OFFSETS:
+            {
+                uint8_t compassNumber = -1;
+                if (is_equal(packet.param1, 2.0f)) {
+                    compassNumber = 0;
+                } else if (is_equal(packet.param1, 5.0f)) {
+                    compassNumber = 1;
+                } else if (is_equal(packet.param1, 6.0f)) {
+                    compassNumber = 2;
                 }
-                if (is_equal(packet.param1,5.0f)) {
-                    // save secondary compass's offsets
-                    rover.compass.set_and_save_offsets(1, packet.param2, packet.param3, packet.param4);
+                if (compassNumber != (uint8_t) -1) {
+                    rover.compass.set_and_save_offsets(compassNumber, packet.param2, packet.param3, packet.param4);
                     result = MAV_RESULT_ACCEPTED;
                 }
                 break;
+            }
 
         case MAV_CMD_DO_SET_MODE:
             switch ((uint16_t)packet.param1) {
@@ -1102,7 +1074,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
 
         case MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES: {
             if (is_equal(packet.param1,1.0f)) {
-                rover.gcs[chan-MAVLINK_COMM_0].send_autopilot_version(FIRMWARE_VERSION);
+                send_autopilot_version(FIRMWARE_VERSION);
                 result = MAV_RESULT_ACCEPTED;
             }
             break;
@@ -1123,7 +1095,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
                     break;
                 }
                 // sanity check location
-                if (fabsf(packet.param5) > 90.0f || fabsf(packet.param6) > 180.0f) {
+                if (!check_latlng(packet.param5, packet.param6)) {
                     break;
                 }
                 Location new_home_loc {};
@@ -1296,6 +1268,11 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
 			mavlink_hil_state_t packet;
 			mavlink_msg_hil_state_decode(msg, &packet);
 			
+            // sanity check location
+            if (!check_latlng(packet.lat, packet.lon)) {
+                break;
+            }
+
             // set gps hil sensor
             Location loc;
             loc.lat = packet.lat;
@@ -1306,7 +1283,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
             
             gps.setHIL(0, AP_GPS::GPS_OK_FIX_3D,
                        packet.time_usec/1000,
-                       loc, vel, 10, 0, true);
+                       loc, vel, 10, 0);
 			
 			// rad/sec
             Vector3f gyros;
@@ -1392,14 +1369,21 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         handle_gps_inject(msg, rover.gps);
         break;
 
+    case MAVLINK_MSG_ID_DISTANCE_SENSOR:
+        rover.sonar.handle_msg(msg);
+        break;
+
     case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
         rover.DataFlash.remote_log_block_status_msg(chan, msg);
         break;
 
     case MAVLINK_MSG_ID_AUTOPILOT_VERSION_REQUEST:
-        rover.gcs[chan-MAVLINK_COMM_0].send_autopilot_version(FIRMWARE_VERSION);
+        send_autopilot_version(FIRMWARE_VERSION);
         break;
 
+    case MAVLINK_MSG_ID_SETUP_SIGNING:
+        handle_setup_signing(msg);
+        break;
     } // end switch
 } // end handle mavlink
 
