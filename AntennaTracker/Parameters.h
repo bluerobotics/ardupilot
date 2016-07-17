@@ -63,8 +63,8 @@ public:
         k_param_scheduler,
         k_param_ins,
         k_param_sitl,
-        k_param_pidPitch2Srv,
-        k_param_pidYaw2Srv,
+        k_param_pidPitch_old,   // deprecated
+        k_param_pidYaw_old,     // deprecated
         k_param_gcs2,               // stream rates for uartD
         k_param_serial2_baud,       // deprecated
 
@@ -87,7 +87,7 @@ public:
         k_param_yaw_trim,
         k_param_pitch_trim,
         k_param_yaw_range,
-        k_param_pitch_range,
+        k_param_pitch_range,	//deprecated
         k_param_distance_min,
         k_param_sysid_target,       // 138
         k_param_gcs3,               // stream rates for fourth MAVLink port
@@ -100,12 +100,17 @@ public:
         k_param_serial_manager,     // serial manager library
         k_param_servo_yaw_type,
         k_param_alt_source,
+        k_param_mavlink_update_rate,
+        k_param_pitch_min,
+        k_param_pitch_max,
 
         //
         // 200 : Radio settings
         //
         k_param_channel_yaw = 200,
         k_param_channel_pitch,
+        k_param_pidPitch2Srv,
+        k_param_pidYaw2Srv,
 
         //
         // 220: Waypoint data
@@ -138,6 +143,7 @@ public:
     AP_Int8  servo_pitch_type;
     AP_Int8  servo_yaw_type;
     AP_Int8  alt_source;
+    AP_Int8  mavlink_update_rate;
     AP_Float onoff_yaw_rate;
     AP_Float onoff_pitch_rate;
     AP_Float onoff_yaw_mintime;
@@ -145,8 +151,9 @@ public:
     AP_Float yaw_trim;
     AP_Float pitch_trim;
     AP_Int16 yaw_range;             // yaw axis total range of motion in degrees
-    AP_Int16 pitch_range;           // pitch axis total range of motion in degrees
     AP_Int16 distance_min;          // target's must be at least this distance from tracker to be tracked
+    AP_Int16 pitch_min;
+    AP_Int16 pitch_max;
 
     // Waypoints
     //
@@ -154,13 +161,13 @@ public:
 
     AP_Int32 log_bitmask;
 
-    // PID controllers
-    PID         pidPitch2Srv;
-    PID         pidYaw2Srv;
+    // AC_PID controllers
+    AC_PID         pidPitch2Srv;
+    AC_PID         pidYaw2Srv;
 
     Parameters() :
-        pidPitch2Srv(0.2, 0, 0.05f, 4000.0f),
-        pidYaw2Srv  (0.2, 0, 0.05f, 4000.0f)
+        pidPitch2Srv(0.2, 0, 0.05f, 4000.0f, 0.1, 0.02f),
+        pidYaw2Srv  (0.2, 0, 0.05f, 4000.0f, 0.1, 0.02f)
         {}
 };
 

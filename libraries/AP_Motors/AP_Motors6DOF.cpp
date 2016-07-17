@@ -91,6 +91,30 @@ const AP_Param::GroupInfo AP_Motors6DOF::var_info[] = {
 	// @User: Standard
 	AP_GROUPINFO("FV_CPLNG_K", 8, AP_Motors6DOF, _forwardVerticalCouplingFactor, 1.0),
 
+	// @Param: GAIN_MAX
+	// @DisplayName: Maximum allowed motor gain
+	// @Description: Maximum allowed motor gain for scaling power output
+	// @Range: 0.1 1.0
+	// @Increment: 0.01
+	// @User: Standard
+	AP_GROUPINFO("GAIN_MAX", 9, AP_Motors6DOF, _gain_max, 1.0),
+
+	// @Param: GAIN_MIN
+	// @DisplayName: Minimum allowed motor gain
+	// @Description: Minimum allowed motor gain for scaling power output
+	// @Range: 0.1 1.0
+	// @Increment: 0.01
+	// @User: Standard
+	AP_GROUPINFO("GAIN_MIN", 10, AP_Motors6DOF, _gain_min, 0.25),
+
+	// @Param: GAIN_STEPS
+	// @DisplayName: Number of gain levels between min and max
+	// @Description: Number of gain levels between min and max
+	// @Range: 1 10
+	// @Increment: 1
+	// @User: Standard
+	AP_GROUPINFO("GAIN_STEPS", 11, AP_Motors6DOF, _gain_steps, 4),
+
     AP_GROUPEND
 };
 
@@ -130,7 +154,23 @@ void AP_Motors6DOF::output_min()
 
 int16_t AP_Motors6DOF::calc_thrust_to_pwm(float thrust_in) const
 {
-    return constrain_int16(1500 + thrust_in * 400, _throttle_radio_min, _throttle_radio_max);
+    return constrain_int16(1500 + thrust_in * _gain * 400, _throttle_radio_min, _throttle_radio_max);
+}
+
+void AP_Motors6DOF::set_gain(float gain) {
+	_gain = constrain_float(gain,_gain_min,_gain_max);
+}
+
+float AP_Motors6DOF::get_gain() {
+	return _gain;
+}
+
+void AP_Motors6DOF::increase_gain() {
+	_gain = constrain_float(_gain + (_gain_max-_gain_min)/(_gain_steps-1), _gain_min, _gain_max);
+}
+
+void AP_Motors6DOF::decrease_gain() {
+	_gain = constrain_float(_gain - (_gain_max-_gain_min)/(_gain_steps-1), _gain_min, _gain_max);
 }
 
 void AP_Motors6DOF::output_to_motors()
@@ -138,7 +178,7 @@ void AP_Motors6DOF::output_to_motors()
     int8_t i;
     int16_t motor_out[AP_MOTORS_MAX_NUM_MOTORS];    // final pwm values sent to the motor
 
-    switch (_multicopter_flags.spool_mode) {
+    switch (_spool_mode) {
         case SHUT_DOWN:
             // sends minimum values out to the motors
             // set motor output based on thrust requests

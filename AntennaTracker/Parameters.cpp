@@ -196,15 +196,6 @@ const AP_Param::Info Tracker::var_info[] = {
     // @User: Standard
     GSCALAR(yaw_range,              "YAW_RANGE", YAW_RANGE_DEFAULT),
 
-    // @Param: PITCH_RANGE
-    // @DisplayName: Pitch Range
-    // @Description: Pitch axis total range of motion in degrees
-    // @Units: degrees
-    // @Increment: 0.1
-    // @Range: 0 180
-    // @User: Standard
-    GSCALAR(pitch_range,            "PITCH_RANGE", PITCH_RANGE_DEFAULT),
-
     // @Param: DISTANCE_MIN
     // @DisplayName: Distance minimum to target
     // @Description: Tracker will track targets at least this distance away
@@ -216,10 +207,37 @@ const AP_Param::Info Tracker::var_info[] = {
 
     // @Param: ALT_SOURCE
     // @DisplayName: Altitude Source
-    // @Description: What provides altitude information for vehicle
-    // @Values: 0:Barometer,1:GPS
+    // @Description: What provides altitude information for vehicle. Vehicle only assumes tracker has same altitude as vehicle's home
+    // @Values: 0:Barometer,1:GPS,2:GPS vehicle only
     // @User: Standard
     GSCALAR(alt_source,				"ALT_SOURCE",	0),
+
+    // @Param: MAV_UPDATE_RATE
+    // @DisplayName: Mavlink Update Rate
+    // @Description: The rate at which Mavlink updates position and baro data
+    // @Units: Hz
+    // @Increment: 1
+    // @Range: 1 10
+    // @User: Standard
+    GSCALAR(mavlink_update_rate,	"MAV_UPDATE_RATE",	1),
+
+    // @Param: PITCH_MIN
+    // @DisplayName: Minimum Pitch Angle
+    // @Description: The lowest angle the pitch can reach
+    // @Units: Degrees
+    // @Increment: 1
+    // @Range: 0 -90
+    // @User: Standard
+    GSCALAR(pitch_min,               "PITCH_MIN",	PITCH_MIN_DEFAULT),
+
+    // @Param: PITCH_MAX
+    // @DisplayName: Maximum Pitch Angle
+    // @Description: The highest angle the pitch can reach
+    // @Units: Degrees
+    // @Increment: 1
+    // @Range: 0 90
+    // @User: Standard
+    GSCALAR(pitch_max,               "PITCH_MAX",	PITCH_MAX_DEFAULT),
 
     // barometer ground calibration. The GND_ prefix is chosen for
     // compatibility with previous releases of ArduPlane
@@ -328,7 +346,7 @@ const AP_Param::Info Tracker::var_info[] = {
     // @Range: 0.001 0.1
     // @Increment: 0.001
     // @User: Standard
-	GGROUP(pidPitch2Srv,       "PITCH2SRV_", PID),
+	GGROUP(pidPitch2Srv,       "PITCH2SRV_", AC_PID),
 
     // @Param: YAW2SRV_P
     // @DisplayName: Yaw axis controller P gain
@@ -358,7 +376,7 @@ const AP_Param::Info Tracker::var_info[] = {
     // @Range: 0.001 0.1
     // @Increment: 0.001
     // @User: Standard
-	GGROUP(pidYaw2Srv,         "YAW2SRV_", PID),
+	GGROUP(pidYaw2Srv,         "YAW2SRV_", AC_PID),
 
     // @Param: CMD_TOTAL
     // @DisplayName: Number of loaded mission items

@@ -89,6 +89,7 @@ enum aux_sw_func {
 #define VECTORED_FRAME 11
 #define VECTORED6DOF_FRAME 12
 #define SIMPLEROV_FRAME 13
+#define VECTORED90_FRAME 14
 
 // HIL enumerations
 #define HIL_MODE_DISABLED               0
@@ -112,7 +113,8 @@ enum control_mode_t {
     AUTOTUNE =     15,  // automatically tune the vehicle's roll and pitch gains
     POSHOLD =      16,  // automatic position hold with manual override, with automatic throttle
     BRAKE =        17,  // full-brake using inertial/GPS system, no pilot input
-	THROW =        18   // throw to launch mode using inertial/GPS system, no pilot input
+	THROW =        18,  // throw to launch mode using inertial/GPS system, no pilot input
+	MANUAL =	   19   // Pass-through input with no stabilization
 };
 
 enum mode_reason_t {
@@ -359,10 +361,11 @@ enum ThrowModeState {
 #define DATA_ROTOR_SPEED_BELOW_CRITICAL     59  // Heli only
 #define DATA_EKF_ALT_RESET                  60
 #define DATA_LAND_CANCELLED_BY_PILOT        61
-#define DATA_SURFACED						62	// Sub only
-#define DATA_NOT_SURFACED					63	// Sub only
-#define DATA_BOTTOMED						64	// Sub only
-#define DATA_NOT_BOTTOMED					65	// Sub only
+#define DATA_EKF_YAW_RESET                  62
+#define DATA_SURFACED						63	// Sub only
+#define DATA_NOT_SURFACED					64	// Sub only
+#define DATA_BOTTOMED						65	// Sub only
+#define DATA_NOT_BOTTOMED					66	// Sub only
 
 // Centi-degrees to radians
 #define DEGX100 5729.57795f

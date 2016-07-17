@@ -88,7 +88,7 @@ NOINLINE void Sub::send_heartbeat(mavlink_channel_t chan)
     gcs[chan-MAVLINK_COMM_0].send_heartbeat(mav_type,
                                             base_mode,
                                             custom_mode,
-                                            system_status);
+											system_status);
 }
 
 NOINLINE void Sub::send_attitude(mavlink_channel_t chan)
@@ -132,6 +132,11 @@ NOINLINE void Sub::send_extended_status1(mavlink_channel_t chan)
 #if OPTFLOW == ENABLED
     if (optflow.enabled()) {
         control_sensors_present |= MAV_SYS_STATUS_SENSOR_OPTICAL_FLOW;
+    }
+#endif
+#if PRECISION_LANDING == ENABLED
+    if (precland.enabled()) {
+        control_sensors_present |= MAV_SYS_STATUS_SENSOR_VISION_POSITION;
     }
 #endif
     if (ap.rc_receiver_present) {
@@ -186,6 +191,11 @@ NOINLINE void Sub::send_extended_status1(mavlink_channel_t chan)
 #if OPTFLOW == ENABLED
     if (optflow.healthy()) {
         control_sensors_health |= MAV_SYS_STATUS_SENSOR_OPTICAL_FLOW;
+    }
+#endif
+#if PRECISION_LANDING == ENABLED
+    if (precland.healthy()) {
+        control_sensors_health |= MAV_SYS_STATUS_SENSOR_VISION_POSITION;
     }
 #endif
     if (ap.rc_receiver_present && !failsafe.radio) {
@@ -701,6 +711,11 @@ bool GCS_MAVLINK_Sub::try_send_message(enum ap_message id)
     case MSG_MAG_CAL_REPORT:
         sub.compass.send_mag_cal_report(chan);
         break;
+
+    case MSG_ADSB_VEHICLE:
+		CHECK_PAYLOAD_SIZE(ADSB_VEHICLE);
+		sub.adsb.send_adsb_vehicle(chan);
+		break;
     }
 
     return true;
@@ -788,7 +803,16 @@ const AP_Param::GroupInfo GCS_MAVLINK::var_info[] = {
     // @Increment: 1
     // @User: Advanced
     AP_GROUPINFO("PARAMS",   8, GCS_MAVLINK, streamRates[8],  0),
-    AP_GROUPEND
+
+    // @Param: ADSB
+    // @DisplayName: ADSB stream rate to ground station
+    // @Description: ADSB stream rate to ground station
+    // @Units: Hz
+    // @Range: 0 50
+    // @Increment: 1
+    // @User: Advanced
+    AP_GROUPINFO("ADSB",   9, GCS_MAVLINK, streamRates[9],  5),
+AP_GROUPEND
 };
 
 void
@@ -893,6 +917,12 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         send_message(MSG_EKF_STATUS_REPORT);
         send_message(MSG_VIBRATION);
         send_message(MSG_RPM);
+    }
+
+    if (sub.gcs_out_of_time) return;
+
+    if (stream_trigger(STREAM_ADSB)) {
+        send_message(MSG_ADSB_VEHICLE);
     }
 }
 
@@ -1895,6 +1925,14 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         sub.precland.handle_msg(msg);
         break;
 #endif
+
+#if AC_FENCE == ENABLED
+    // send or receive fence points with GCS
+    case MAVLINK_MSG_ID_FENCE_POINT:            // MAV ID: 160
+    case MAVLINK_MSG_ID_FENCE_FETCH_POINT:
+        sub.fence.handle_msg(chan, msg);
+        break;
+#endif // AC_FENCE == ENABLED
 
 #if CAMERA == ENABLED
     //deprecated.  Use MAV_CMD_DO_DIGICAM_CONFIGURE

@@ -55,6 +55,11 @@ void Tracker::send_heartbeat(mavlink_channel_t chan)
         break;
     }
 
+    // we are armed if safety switch is not disarmed
+    if (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED) {
+        base_mode |= MAV_MODE_FLAG_SAFETY_ARMED;
+    }
+
     gcs[chan-MAVLINK_COMM_0].send_heartbeat(MAV_TYPE_ANTENNA_TRACKER,
                                             base_mode,
                                             custom_mode,
@@ -129,7 +134,7 @@ void Tracker::send_waypoint_request(mavlink_channel_t chan)
 
 void Tracker::send_nav_controller_output(mavlink_channel_t chan)
 {
-	float alt_diff = (g.alt_source == 0) ? nav_status.alt_difference_baro : nav_status.alt_difference_gps;
+	float alt_diff = (g.alt_source == ALT_SOURCE_BARO) ? nav_status.alt_difference_baro : nav_status.alt_difference_gps;
 
     mavlink_msg_nav_controller_output_send(
         chan,
@@ -265,6 +270,7 @@ bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
     case MSG_EXTENDED_STATUS1:
     case MSG_EXTENDED_STATUS2:
     case MSG_RETRY_DEFERRED:
+    case MSG_ADSB_VEHICLE:
     case MSG_CURRENT_WAYPOINT:
     case MSG_VFR_HUD:
     case MSG_SYSTEM_TIME:
@@ -508,7 +514,7 @@ void Tracker::mavlink_check_target(const mavlink_message_t* msg)
                     msg->sysid,
                     msg->compid,
                     MAV_DATA_STREAM_POSITION,
-                    1,  // 1hz
+                    g.mavlink_update_rate,
                     1); // start streaming
             }
             // request air pressure
@@ -518,7 +524,7 @@ void Tracker::mavlink_check_target(const mavlink_message_t* msg)
                     msg->sysid,
                     msg->compid,
                     MAV_DATA_STREAM_RAW_SENSORS,
-                    1,  // 1hz
+                    g.mavlink_update_rate,
                     1); // start streaming
             }
         }
