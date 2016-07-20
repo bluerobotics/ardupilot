@@ -8,7 +8,9 @@
 // Anonymous namespace to hold variables used only in this file
 namespace {
 	int16_t mode = 1100;
-	int16_t camTilt = 1500;
+	int16_t cam_tilt = 1500;
+	int16_t cam_tilt_goal = 1500;
+	float cam_tilt_alpha = 0.9;
 	int16_t lights1 = 1100;
 	int16_t lights2 = 1100;
 	int16_t rollTrim = 0;
@@ -19,10 +21,6 @@ namespace {
 	int16_t video_switch = 1100;
 	int16_t x_last, y_last, z_last;
 	uint16_t buttons_prev;
-	float gain = 0.5;
-	float maxGain = 1.0;
-	float minGain = 0.25;
-	int8_t numGainSettings = 4;
 }
 
 void Sub::transform_manual_control_to_rc_override(int16_t x, int16_t y, int16_t z, int16_t r, uint16_t buttons) {
@@ -30,8 +28,8 @@ void Sub::transform_manual_control_to_rc_override(int16_t x, int16_t y, int16_t 
 
 	uint32_t tnow_ms = millis();
 
-	float rpyScale = 0.4*gain; // Scale -1000-1000 to -400-400 with gain
-	float throttleScale = 0.8*gain; // Scale 0-1000 to 0-800 with gain
+	float rpyScale = 0.4; // Scale -1000-1000 to -400-400
+	float throttleScale = 0.8; // Scale 0-1000 to 0-800
 	int16_t rpyCenter = 1500;
 	int16_t throttleBase = 1500-500*throttleScale;
 
@@ -57,6 +55,9 @@ void Sub::transform_manual_control_to_rc_override(int16_t x, int16_t y, int16_t 
 		buttons_prev = buttons;
 	}
 
+	// Camera tilt low pass filter
+	cam_tilt = cam_tilt*cam_tilt_alpha+cam_tilt_goal*(1-cam_tilt_alpha);
+
 	// Set channels to override
 	channels[0] = 1500 + pitchTrim;                           // pitch
 	channels[1] = 1500 + rollTrim;                            // roll
@@ -65,7 +66,7 @@ void Sub::transform_manual_control_to_rc_override(int16_t x, int16_t y, int16_t 
 	channels[4] = mode;                                       // for testing only
 	channels[5] = constrain_int16((x+xTrim)*rpyScale+rpyCenter,1100,1900);           // forward for ROV
 	channels[6] = constrain_int16((y+yTrim)*rpyScale+rpyCenter,1100,1900);           // lateral for ROV
-	channels[7] = camTilt;                                    // camera tilt
+	channels[7] = cam_tilt;                                    // camera tilt
 	channels[8] = lights1;                                    // lights 1
 	channels[9] = lights2;                                    // lights 2
 	channels[10] = video_switch;                              // video switch
@@ -117,13 +118,13 @@ void Sub::handle_jsbutton_press(uint8_t button, bool shift) {
 			mode = 1900;
 			break;
 		case JSButton::button_function_t::k_mount_center:
-			camTilt = 1500;
+			cam_tilt_goal = 1500;
 			break;
 		case JSButton::button_function_t::k_mount_tilt_up:
-			camTilt = constrain_float(camTilt-30,800,2200);
+			cam_tilt_goal = constrain_float(cam_tilt_goal-30,800,2200);
 			break;
 		case JSButton::button_function_t::k_mount_tilt_down:
-			camTilt = constrain_float(camTilt+30,800,2200);
+			cam_tilt_goal = constrain_float(cam_tilt_goal+30,800,2200);
 			break;
 		case JSButton::button_function_t::k_camera_trigger:
 			break;
@@ -183,20 +184,20 @@ void Sub::handle_jsbutton_press(uint8_t button, bool shift) {
 				static bool lowGain = false;
 				lowGain = !lowGain;
 				if ( lowGain ) {
-					gain = 0.5f;
+					motors.set_gain(0.0f);
 				} else {
-					gain = 1.0f;
+					motors.set_gain(1.0f);
 				}
-				gcs_send_text_fmt(MAV_SEVERITY_INFO,"Gain: %2.0f%%",gain*100);
+				gcs_send_text_fmt(MAV_SEVERITY_INFO,"Gain: %2.0f%%",motors.get_gain()*100);
 			}
 			break;
 		case JSButton::button_function_t::k_gain_inc:
-			gain = constrain_float(gain + (maxGain-minGain)/(numGainSettings-1), minGain, maxGain);
-			gcs_send_text_fmt(MAV_SEVERITY_INFO,"Gain: %2.0f%%",gain*100);
+			motors.increase_gain();
+			gcs_send_text_fmt(MAV_SEVERITY_INFO,"Gain: %2.0f%%",motors.get_gain()*100);
 			break;
 		case JSButton::button_function_t::k_gain_dec:
-			gain = constrain_float(gain - (maxGain-minGain)/(numGainSettings-1), minGain, maxGain);
-			gcs_send_text_fmt(MAV_SEVERITY_INFO,"Gain: %2.0f%%",gain*100);
+			motors.decrease_gain();
+			gcs_send_text_fmt(MAV_SEVERITY_INFO,"Gain: %2.0f%%",motors.get_gain()*100);
 			break;
 		case JSButton::button_function_t::k_trim_roll_inc:
 			rollTrim = constrain_float(rollTrim+10,-200,200);

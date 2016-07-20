@@ -69,6 +69,8 @@
  # define FRAME_CONFIG_STRING "ROV_VECTORED6DOF_FRAME"
 #elif FRAME_CONFIG == SIMPLEROV_FRAME
  # define FRAME_CONFIG_STRING "ROV_SIMPLEROV_FRAME"
+#elif FRAME_CONFIG == VECTORED90_FRAME
+# define FRAME_CONFIG_STRING "ROV_VECTORED90_FRAME"
 #else
  # define FRAME_CONFIG_STRING "UNKNOWN"
 #endif
@@ -509,14 +511,6 @@
 //////////////////////////////////////////////////////////////////////////////
 // Throttle control gains
 //
-#ifndef THR_MID_DEFAULT
- # define THR_MID_DEFAULT       500             // Throttle output (0 ~ 1000) when throttle stick is in mid position
-#endif
-
-#ifndef THR_MIN_DEFAULT
- # define THR_MIN_DEFAULT       130             // minimum throttle sent to the motors when armed and pilot throttle above zero
-#endif
-#define THR_MAX                 1000            // maximum throttle input and output sent to the motors
 
 #ifndef THR_DZ_DEFAULT
 # define THR_DZ_DEFAULT         100             // the deadzone above and below mid throttle while in althold or loiter
@@ -550,10 +544,10 @@
 
 // default maximum vertical velocity and acceleration the pilot may request
 #ifndef PILOT_VELZ_MAX
- # define PILOT_VELZ_MAX    250     // maximum vertical velocity in cm/s
+ # define PILOT_VELZ_MAX    50     // maximum vertical velocity in cm/s
 #endif
 #ifndef PILOT_ACCEL_Z_DEFAULT
- # define PILOT_ACCEL_Z_DEFAULT 250 // vertical acceleration in cm/s/s while altitude is under pilot control
+ # define PILOT_ACCEL_Z_DEFAULT 50 // vertical acceleration in cm/s/s while altitude is under pilot control
 #endif
 
 // max distance in cm above or below current location that will be used for the alt target when transitioning to alt-hold mode

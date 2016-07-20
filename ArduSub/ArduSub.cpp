@@ -97,8 +97,9 @@ const AP_Scheduler::Task Sub::scheduler_tasks[] = {
 	SCHED_TASK(read_rangefinder,      20,    100),
 	SCHED_TASK(update_altitude,       10,    100),
     SCHED_TASK(run_nav_updates,       50,    100),
-    SCHED_TASK(update_thr_average,   100,     90),
+    SCHED_TASK(update_throttle_hover, 100,     90),
     SCHED_TASK(three_hz_loop,          3,     75),
+	SCHED_TASK(update_turn_counter,   10,     50),
     SCHED_TASK(compass_accumulate,   100,    100),
     SCHED_TASK(barometer_accumulate,  50,     90),
 #if PRECISION_LANDING == ENABLED
@@ -243,8 +244,10 @@ void Sub::fast_loop()
     // --------------------
     read_AHRS();
 
-    // run low level rate controllers that only require IMU data
-    attitude_control.rate_controller_run();
+    if(control_mode != MANUAL) { //don't run rate controller in manual mode
+		// run low level rate controllers that only require IMU data
+		attitude_control.rate_controller_run();
+    }
 
     // send outputs to the motors library
     motors_output();
@@ -268,8 +271,10 @@ void Sub::fast_loop()
     // check if we've reached the surface or bottom
     update_surface_and_bottom_detector();
 
+#if MOUNT == ENABLED
     // camera mount's fast update
     camera_mount.update_fast();
+#endif
 
     // log sensor health
     if (should_log(MASK_LOG_ANY)) {
@@ -336,7 +341,7 @@ void Sub::update_batt_compass(void)
 
     if(g.compass_enabled) {
         // update compass with throttle value - used for compassmot
-        compass.set_throttle(motors.get_throttle()/1000.0f);
+        compass.set_throttle(motors.get_throttle());
         compass.read();
         // log compass information
         if (should_log(MASK_LOG_COMPASS) && !ahrs.have_ekf_logging()) {
@@ -378,6 +383,9 @@ void Sub::ten_hz_logging_loop()
     if (should_log(MASK_LOG_IMU) || should_log(MASK_LOG_IMU_FAST) || should_log(MASK_LOG_IMU_RAW)) {
         DataFlash.Log_Write_Vibration(ins);
     }
+    if (should_log(MASK_LOG_CTUN)) {
+        attitude_control.control_monitor_log();
+    }
 }
 
 // twentyfive_hz_logging_loop
@@ -402,7 +410,7 @@ void Sub::twentyfive_hz_logging()
     }
 
     // log IMU data if we're not already logging at the higher rate
-    if (should_log(MASK_LOG_IMU) && should_log(MASK_LOG_IMU_RAW)) {
+    if (should_log(MASK_LOG_IMU) && !should_log(MASK_LOG_IMU_RAW)) {
         DataFlash.Log_Write_IMU(ins);
     }
 #endif
@@ -456,9 +464,7 @@ void Sub::one_hz_loop()
         motors.set_frame_orientation(g.frame_orientation);
 
         // set all throttle channel settings
-        motors.set_throttle_range(g.throttle_min, channel_throttle->get_radio_min(), channel_throttle->get_radio_max());
-        // set hover throttle
-        motors.set_hover_throttle(g.throttle_mid);
+        motors.set_throttle_range(channel_throttle->get_radio_min(), channel_throttle->get_radio_max());
     }
 
     // update assigned functions and enable auxiliary servos
@@ -491,7 +497,7 @@ void Sub::update_GPS(void)
 
             // log GPS message
             if (should_log(MASK_LOG_GPS) && !ahrs.have_ekf_logging()) {
-                DataFlash.Log_Write_GPS(gps, i, current_loc.alt);
+                DataFlash.Log_Write_GPS(gps, i);
             }
 
             gps_updated = true;

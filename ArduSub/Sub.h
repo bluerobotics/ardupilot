@@ -75,6 +75,7 @@
 #include <AC_WPNav/AC_Circle.h>          // circle navigation library
 #include <AP_Declination/AP_Declination.h>     // ArduPilot Mega Declination Helper Library
 #include <AC_Fence/AC_Fence.h>           // ArduCopter Fence library
+#include <AC_Avoidance/AC_Avoid.h>           // Arducopter stop at fence library
 #include <AP_Scheduler/AP_Scheduler.h>       // main loop scheduler
 #include <AP_RCMapper/AP_RCMapper.h>        // RC input mapping library
 #include <AP_Notify/AP_Notify.h>          // Notify library
@@ -83,6 +84,7 @@
 #include <AP_Frsky_Telem/AP_Frsky_Telem.h>
 #include <AP_LandingGear/AP_LandingGear.h>     // Landing Gear library
 #include <AP_Terrain/AP_Terrain.h>
+#include <AP_ADSB/AP_ADSB.h>
 #include <AP_RPM/AP_RPM.h>
 #include <AC_InputManager/AC_InputManager.h>        // Pilot input handling library
 #include <AP_JSButton/AP_JSButton.h>   // Joystick/gamepad button function assignment
@@ -271,6 +273,8 @@ private:
         uint32_t start_ms;
     } takeoff_state;
 
+    uint32_t precland_last_update_ms;
+
     RCMapper rcmap;
 
     // board specific config
@@ -302,25 +306,7 @@ private:
     } sensor_health;
 
     // Motor Output
-#if FRAME_CONFIG == QUAD_FRAME
- #define MOTOR_CLASS AP_MotorsQuad
-#elif FRAME_CONFIG == TRI_FRAME
- #define MOTOR_CLASS AP_MotorsTri
-#elif FRAME_CONFIG == HEXA_FRAME
- #define MOTOR_CLASS AP_MotorsHexa
-#elif FRAME_CONFIG == Y6_FRAME
- #define MOTOR_CLASS AP_MotorsY6
-#elif FRAME_CONFIG == OCTA_FRAME
- #define MOTOR_CLASS AP_MotorsOcta
-#elif FRAME_CONFIG == OCTA_QUAD_FRAME
- #define MOTOR_CLASS AP_MotorsOctaQuad
-#elif FRAME_CONFIG == HELI_FRAME
- #define MOTOR_CLASS AP_MotorsHeli_Single
-#elif FRAME_CONFIG == SINGLE_FRAME
- #define MOTOR_CLASS AP_MotorsSingle
-#elif FRAME_CONFIG == COAX_FRAME
- #define MOTOR_CLASS AP_MotorsCoax
-#elif FRAME_CONFIG == BLUEROV_FRAME
+#if FRAME_CONFIG == BLUEROV_FRAME
  #define MOTOR_CLASS AP_MotorsBlueROV6DOF
 #elif FRAME_CONFIG == VECTORED_FRAME
  #define MOTOR_CLASS AP_MotorsVectoredROV
@@ -328,6 +314,8 @@ private:
  #define MOTOR_CLASS AP_MotorsVectored6DOF
 #elif FRAME_CONFIG == SIMPLEROV_FRAME
  #define MOTOR_CLASS AP_MotorsSimpleROV
+#elif FRAME_CONFIG == VECTORED90_FRAME
+ #define MOTOR_CLASS AP_MotorsVectored90
 
 #else
  #error Unrecognised frame type
@@ -385,7 +373,6 @@ private:
     int32_t initial_armed_bearing;
 
     // Throttle variables
-    float throttle_average;              // estimated throttle required to hover
     int16_t desired_climb_rate;          // pilot desired climb rate - for logging purposes only
 
     // Loiter control
@@ -424,6 +411,10 @@ private:
     int32_t baro_alt;            // barometer altitude in cm above home
     float baro_climbrate;        // barometer climbrate in cm/s
     LowPassFilterVector3f land_accel_ef_filter; // accelerations for land and crash detector tests
+
+    // Turn counter
+    int32_t quarter_turn_count;
+    uint8_t last_turn_state;
 
     // filtered pilot's throttle input used to cancel landing if throttle held high
     LowPassFilterFloat rc_throttle_control_in_filter;
@@ -468,6 +459,7 @@ private:
     AC_AttitudeControl_Multi attitude_control;
 
     AC_PosControl pos_control;
+    AC_Avoid avoid;
     AC_WPNav wp_nav;
     AC_Circle circle_nav;
 
@@ -544,6 +536,8 @@ private:
     AC_PrecLand precland;
 #endif
 
+    AP_ADSB adsb {ahrs};
+
     // use this to prevent recursion during sensor init
     bool in_mavlink_delay;
 
@@ -583,6 +577,7 @@ private:
     void three_hz_loop();
     void one_hz_loop();
     void update_GPS(void);
+    void update_turn_counter();
     void init_simple_bearing();
     void update_simple_mode(void);
     void update_super_simple_bearing(bool force_update);
@@ -607,7 +602,7 @@ private:
     void check_ekf_yaw_reset();
     float get_roi_yaw();
     float get_look_ahead_yaw();
-    void update_thr_average();
+    void update_throttle_hover();
     void set_throttle_takeoff();
     float get_pilot_desired_throttle(int16_t throttle_control);
     float get_pilot_desired_climb_rate(float throttle_control);
@@ -651,7 +646,6 @@ private:
     void Log_Write_Performance();
     void Log_Write_Attitude();
     void Log_Write_MotBatt();
-    void Log_Write_Startup();
     void Log_Write_Event(uint8_t id);
     void Log_Write_Data(uint8_t id, int32_t value);
     void Log_Write_Data(uint8_t id, uint32_t value);
@@ -823,13 +817,12 @@ private:
     void rtl_land_run();
     void rtl_build_path(bool terrain_following_allowed);
     void rtl_compute_return_alt(const Location_Class &rtl_origin_point, Location_Class &rtl_return_target, bool terrain_following_allowed);
-    float get_RTL_alt();
     bool sport_init(bool ignore_checks);
     void sport_run();
     bool stabilize_init(bool ignore_checks);
     void stabilize_run();
-    bool rov_init(bool ignore_checks);
-    void rov_run();
+    bool manual_init(bool ignore_checks);
+    void manual_run();
     void crash_check();
     void parachute_check();
     void parachute_release();
@@ -892,6 +885,7 @@ private:
     void pre_arm_rc_checks();
     bool pre_arm_gps_checks(bool display_failure);
     bool pre_arm_ekf_attitude_check();
+    bool pre_arm_rallypoint_check();
     bool pre_arm_terrain_check(bool display_failure);
     bool arm_checks(bool display_failure, bool arming_from_gcs);
     void init_disarm_motors();
