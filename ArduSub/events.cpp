@@ -8,29 +8,29 @@
  */
 void Sub::failsafe_radio_on_event()
 {
-    // if motors are not armed there is nothing to do
-    if( !motors.armed() ) {
-        return;
-    }
-
-    if (should_disarm_on_failsafe()) {
-        init_disarm_motors();
-    } else {
-        if (control_mode == AUTO && g.failsafe_throttle == FS_THR_ENABLED_CONTINUE_MISSION) {
-            // continue mission
-        } else if (control_mode == LAND && g.failsafe_battery_enabled == FS_BATT_LAND && failsafe.battery) {
-            // continue landing
-        } else {
-            if (g.failsafe_throttle == FS_THR_ENABLED_ALWAYS_LAND) {
-                set_mode_land_with_pause(MODE_REASON_RADIO_FAILSAFE);
-            } else {
-                set_mode_RTL_or_land_with_pause(MODE_REASON_RADIO_FAILSAFE);
-            }
-        }
-    }
-
-    // log the error to the dataflash
-    Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_RADIO, ERROR_CODE_FAILSAFE_OCCURRED);
+//    // if motors are not armed there is nothing to do
+//    if( !motors.armed() ) {
+//        return;
+//    }
+//
+//    if (should_disarm_on_failsafe()) {
+//        init_disarm_motors();
+//    } else {
+//        if (control_mode == AUTO && g.failsafe_throttle == FS_THR_ENABLED_CONTINUE_MISSION) {
+//            // continue mission
+//        } else if (control_mode == LAND && g.failsafe_battery_enabled == FS_BATT_LAND && failsafe.battery) {
+//            // continue landing
+//        } else {
+//            if (g.failsafe_throttle == FS_THR_ENABLED_ALWAYS_LAND) {
+//                set_mode_land_with_pause(MODE_REASON_RADIO_FAILSAFE);
+//            } else {
+//                set_mode_RTL_or_land_with_pause(MODE_REASON_RADIO_FAILSAFE);
+//            }
+//        }
+//    }
+//
+//    // log the error to the dataflash
+//    Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_RADIO, ERROR_CODE_FAILSAFE_OCCURRED);
 
 }
 
@@ -46,93 +46,112 @@ void Sub::failsafe_radio_off_event()
 
 void Sub::failsafe_battery_event(void)
 {
-    // return immediately if low battery event has already been triggered
-    if (failsafe.battery) {
-        return;
-    }
-
-    // failsafe check
-	if (g.failsafe_battery_enabled != FS_BATT_DISABLED && motors.armed()) {
-		if (should_disarm_on_failsafe()) {
-			init_disarm_motors();
-		} else {
-			if (g.failsafe_battery_enabled == FS_BATT_RTL || control_mode == AUTO) {
-				set_mode_RTL_or_land_with_pause(MODE_REASON_BATTERY_FAILSAFE);
-			} else {
-				set_mode_land_with_pause(MODE_REASON_BATTERY_FAILSAFE);
-			}
-		}
-	}
-
-    // set the low battery flag
-    set_failsafe_battery(true);
-
-    // warn the ground station and log to dataflash
-    gcs_send_text(MAV_SEVERITY_WARNING,"Low battery");
-    Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_BATT, ERROR_CODE_FAILSAFE_OCCURRED);
+//    // return immediately if low battery event has already been triggered
+//    if (failsafe.battery) {
+//        return;
+//    }
+//
+//    // failsafe check
+//	if (g.failsafe_battery_enabled != FS_BATT_DISABLED && motors.armed()) {
+//		if (should_disarm_on_failsafe()) {
+//			init_disarm_motors();
+//		} else {
+//			if (g.failsafe_battery_enabled == FS_BATT_RTL || control_mode == AUTO) {
+//				set_mode_RTL_or_land_with_pause(MODE_REASON_BATTERY_FAILSAFE);
+//			} else {
+//				set_mode_land_with_pause(MODE_REASON_BATTERY_FAILSAFE);
+//			}
+//		}
+//	}
+//
+//    // set the low battery flag
+//    set_failsafe_battery(true);
+//
+//    // warn the ground station and log to dataflash
+//    gcs_send_text(MAV_SEVERITY_WARNING,"Low battery");
+//    Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_BATT, ERROR_CODE_FAILSAFE_OCCURRED);
 
 }
 
 void Sub::set_leak_status(bool status) {
-	uint32_t tnow = AP_HAL::millis();
-
-	failsafe.leak = status;
 	AP_Notify::flags.leak_detected = status;
 
-	if(failsafe.leak && tnow > failsafe.last_leak_warn_ms + 5000) {
+	// Do nothing if we are dry, or if leak failsafe action is disabled
+	if(status == false || g.failsafe_leak == FS_LEAK_DISABLED) {
+		failsafe.leak = false;
+		return;
+	}
+
+	uint32_t tnow = AP_HAL::millis();
+
+	// We have a leak
+	// Always send a warning every 5 seconds
+	if(tnow > failsafe.last_leak_warn_ms + 5000) {
 		failsafe.last_leak_warn_ms = tnow;
-		gcs_send_text_fmt(MAV_SEVERITY_WARNING, "Leak Detected");
+		gcs_send_text(MAV_SEVERITY_WARNING, "Leak Detected");
+	}
+
+	// Do nothing if we have already triggered the failsafe action, or if the motors are disarmed
+	if(failsafe.leak || !motors.armed()) {
+		return;
+	}
+
+	failsafe.leak = true;
+
+	// Handle failsafe action
+	if(g.failsafe_leak == FS_LEAK_SURFACE && motors.armed()) {
+		set_mode(SURFACE, MODE_REASON_LEAK_FAILSAFE);
 	}
 }
 
 // failsafe_gcs_check - check for ground station failsafe
 void Sub::failsafe_gcs_check()
 {
-    uint32_t last_gcs_update_ms;
-
-    // return immediately if gcs failsafe is disabled, gcs has never been connected or we are not overriding rc controls from the gcs and we are not in guided mode
+    // return immediately if gcs failsafe action is disabled
     // this also checks to see if we have a GCS failsafe active, if we do, then must continue to process the logic for recovery from this state.
-    if ((!failsafe.gcs) && (g.failsafe_gcs == FS_GCS_DISABLED)) {
+    if (!g.failsafe_gcs && g.failsafe_gcs == FS_GCS_DISABLED) {
     	return;
     }
 
-    // calc time since last gcs update
-    // note: this only looks at the heartbeat from the device id set by g.sysid_my_gcs
-    last_gcs_update_ms = AP_HAL::millis() - failsafe.last_heartbeat_ms;
+    uint32_t tnow = AP_HAL::millis();
 
-    // check if all is well
-    if (last_gcs_update_ms < FS_GCS_TIMEOUT_MS) {
-        // check for recovery from gcs failsafe
+    // Check if we have gotten a GCS heartbeat recently (GCS sysid must match SYSID_MYGCS parameter)
+    if (tnow < failsafe.last_heartbeat_ms + FS_GCS_TIMEOUT_MS) {
+        // Log event if we are recovering from previous gcs failsafe
         if (failsafe.gcs) {
-            failsafe_gcs_off_event();
-            set_failsafe_gcs(false);
+            Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_GCS, ERROR_CODE_FAILSAFE_RESOLVED);
         }
+        failsafe.gcs = false;
         return;
     }
 
-    // do nothing if gcs failsafe already triggered or motors disarmed
+    //////////////////////////////
+    // GCS heartbeat has timed out
+    //////////////////////////////
+
+	// Send a warning every 5 seconds
+	if(tnow > failsafe.last_gcs_warn_ms + 5000) {
+		failsafe.last_gcs_warn_ms = tnow;
+		gcs_send_text_fmt(MAV_SEVERITY_WARNING, "MYGCS: %d, heartbeat lost", g.sysid_my_gcs);
+	}
+
+    // do nothing if we have already triggered the failsafe action, or if the motors are disarmed
     if (failsafe.gcs || !motors.armed()) {
         return;
     }
 
-    // GCS failsafe event has occured
     // update state, log to dataflash
-    set_failsafe_gcs(true);
+    failsafe.gcs = true;
     Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_GCS, ERROR_CODE_FAILSAFE_OCCURRED);
 
-    // clear overrides so that RC control can be regained with radio.
-    hal.rcin->clear_overrides();
-    failsafe.rc_override_active = false;
-
-    // Disarm the motors, pilot has lost all contact/control over vehicle.
-    init_disarm_motors();
-}
-
-// failsafe_gcs_off_event - actions to take when GCS contact is restored
-void Sub::failsafe_gcs_off_event(void)
-{
-    // log recovery of GCS in logs?
-    Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_GCS, ERROR_CODE_FAILSAFE_RESOLVED);
+    // handle failsafe action
+    if(g.failsafe_gcs == FS_GCS_DISARM) {
+    	init_disarm_motors();
+    } else if (g.failsafe_gcs == FS_GCS_HOLD && motors.armed()) {
+    	set_mode(ALT_HOLD, MODE_REASON_GCS_FAILSAFE);
+    } else if (g.failsafe_gcs == FS_GCS_SURFACE && motors.armed()) {
+    	set_mode(SURFACE, MODE_REASON_GCS_FAILSAFE);
+    }
 }
 
 // executes terrain failsafe if data is missing for longer than a few seconds
@@ -195,14 +214,14 @@ void Sub::failsafe_terrain_on_event()
 //  this is always called from a failsafe so we trigger notification to pilot
 void Sub::set_mode_RTL_or_land_with_pause(mode_reason_t reason)
 {
-    // attempt to switch to RTL, if this fails then switch to Land
-    if (!set_mode(RTL, reason)) {
-        // set mode to land will trigger mode change notification to pilot
-        set_mode_land_with_pause(reason);
-    } else {
-        // alert pilot to mode change
-        AP_Notify::events.failsafe_mode_change = 1;
-    }
+//    // attempt to switch to RTL, if this fails then switch to Land
+//    if (!set_mode(RTL, reason)) {
+//        // set mode to land will trigger mode change notification to pilot
+//        set_mode_land_with_pause(reason);
+//    } else {
+//        // alert pilot to mode change
+//        AP_Notify::events.failsafe_mode_change = 1;
+//    }
 }
 
 bool Sub::should_disarm_on_failsafe() {

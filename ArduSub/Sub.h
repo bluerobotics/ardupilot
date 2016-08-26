@@ -300,6 +300,7 @@ private:
         uint8_t terrain             : 1; // 6   // true if the missing terrain data failsafe has occurred
         uint8_t leak				: 1; // true if leak recently detected
         uint32_t last_leak_warn_ms;      // last time a leak warning was sent to gcs
+        uint32_t last_gcs_warn_ms;
 
         int8_t radio_counter;            // number of iterations with throttle below throttle_fs_value
 
@@ -598,7 +599,6 @@ private:
     void set_simple_mode(uint8_t b);
     void set_failsafe_radio(bool b);
     void set_failsafe_battery(bool b);
-    void set_failsafe_gcs(bool b);
     void set_land_complete(bool b);
     void set_land_complete_maybe(bool b);
     void set_pre_arm_check(bool b);
@@ -786,16 +786,7 @@ private:
     void guided_limit_set(uint32_t timeout_ms, float alt_min_cm, float alt_max_cm, float horiz_max_cm);
     void guided_limit_init_time_and_pos();
     bool guided_limit_check();
-    bool land_init(bool ignore_checks);
-    void land_run();
-    void land_gps_run();
-    void land_nogps_run();
-    void land_run_vertical_control(bool pause_descent = false);
-    void land_run_horizontal_control();
     float get_land_descent_speed();
-    void land_do_not_use_GPS();
-    void set_mode_land_with_pause(mode_reason_t reason);
-    bool landing_with_GPS();
     bool loiter_init(bool ignore_checks);
     void loiter_run();
     bool poshold_init(bool ignore_checks);
@@ -852,7 +843,6 @@ private:
     void failsafe_radio_off_event();
     void failsafe_battery_event(void);
     void failsafe_gcs_check();
-    void failsafe_gcs_off_event(void);
     void failsafe_terrain_check();
     void failsafe_terrain_set_status(bool data_ok);
     void failsafe_terrain_on_event();
@@ -1048,6 +1038,9 @@ private:
     void accel_cal_update(void);
 
     void set_leak_status(bool status);
+
+    bool surface_init(bool ignore_flags);
+    void surface_run();
 
 public:
     void mavlink_delay_cb();

@@ -105,7 +105,7 @@ enum control_mode_t {
     LOITER =        5,  // automatic horizontal acceleration with automatic throttle
     RTL =           6,  // automatic return to launching point
     CIRCLE =        7,  // automatic circular flight with automatic throttle
-    LAND =          9,  // automatic landing with horizontal position control
+    SURFACE =       9,  // automatic landing with horizontal position control
     OF_LOITER =    10,  // deprecated
     DRIFT =        11,  // semi-automous position, yaw and throttle control
     SPORT =        13,  // manual earth-frame angular rate control with manual throttle
@@ -131,7 +131,9 @@ enum mode_reason_t {
     MODE_REASON_FENCE_BREACH,
 	MODE_REASON_TERRAIN_FAILSAFE,
 	MODE_REASON_BRAKE_TIMEOUT,
-	MODE_REASON_FLIP_COMPLETE
+	MODE_REASON_FLIP_COMPLETE,
+	MODE_REASON_SURFACE_COMPLETE,
+	MODE_REASON_LEAK_FAILSAFE
 };
 
 // Tuning enumeration
@@ -452,11 +454,18 @@ enum ThrowModeState {
 #define FS_BATT_RTL                         2       // switch to RTL mode on battery failsafe
 
 // GCS failsafe definitions (FS_GCS_ENABLE parameter)
-#define FS_GCS_DISABLED                     0
-#define FS_GCS_ENABLED_ALWAYS_RTL           1
-#define FS_GCS_ENABLED_CONTINUE_MISSION     2
+#define FS_GCS_DISABLED		0 // Disabled
+#define FS_GCS_WARN_ONLY	1 // Only send warning to gcs (only useful with multiple gcs links)
+#define FS_GCS_DISARM		2 // Disarm
+#define FS_GCS_HOLD			3 // Switch depth hold mode or poshold mode if available
+#define FS_GCS_SURFACE		4 // Switch to surface mode
 
-// EKF failsafe definitions (FS_EKF_ACTION parameter)
+// Leak failsafe definitions (FS_LEAK_ENABLE parameter)
+#define FS_LEAK_DISABLED	0 // Disabled
+#define FS_LEAK_WARN_ONLY	1 // Only send waring to gcs
+#define FS_LEAK_SURFACE		2 // Switch to surface mode
+
+// EKF failsafe definitions (FS_EKF_ENABLE parameter)
 #define FS_EKF_ACTION_LAND                  1       // switch to LAND mode on EKF failsafe
 #define FS_EKF_ACTION_ALTHOLD               2       // switch to ALTHOLD mode on EKF failsafe
 #define FS_EKF_ACTION_LAND_EVEN_STABILIZE   3       // switch to Land mode on EKF failsafe even if in a manual flight mode like stabilize
