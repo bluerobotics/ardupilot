@@ -22,6 +22,12 @@ public:
     // constructor
     AP_Baro();
 
+    // barometer types
+    typedef enum {
+        BARO_TYPE_AIR,
+        BARO_TYPE_WATER
+    } baro_type_t;
+
     // initialise the barometer object, loading backend drivers
     void init(void);
 
@@ -107,6 +113,16 @@ public:
     // used by Replay
     void setHIL(uint8_t instance, float pressure, float temperature, float altitude, float climb_rate, uint32_t last_update_ms);
 
+    // Set the primary baro
+    void set_primary_baro(uint8_t primary) { _primary_baro.set_and_save(primary); };
+
+    // Set the type (Air or Water) of a particular instance
+    void set_type(uint8_t instance, uint8_t type) { sensors[instance].type = type; };
+
+    // Set the precision multiplier of a particular instance
+    // Used to adjust for differences in reporting between ms58xx devices and ms5611 devices
+    void set_precision_multiplier(uint8_t instance, uint8_t multiplier) { sensors[instance].precision_multiplier = multiplier; };
+    
     // HIL variables
     struct {
         float pressure;
@@ -147,6 +163,8 @@ private:
     uint8_t _primary;
 
     struct sensor {
+        uint8_t type;                   // 0 for air pressure (default), 1 for water pressure
+        uint8_t precision_multiplier;   // multiplier to convert pressure reported by get_pressure call to Pascal units, for MS56XX air sensors, this is 1, for MS58XX water sensors, this is 10.
         uint32_t last_update_ms;        // last update time in ms
         bool healthy:1;                 // true if sensor is healthy
         bool alt_ok:1;                  // true if calculated altitude is ok
@@ -167,6 +185,9 @@ private:
     float                               _external_temperature;
     uint32_t                            _last_external_temperature_ms;
     DerivativeFilterFloat_Size7         _climb_rate_filter;
+    AP_Float                            _specific_gravity; // the specific gravity of fluid for an ROV 1.00 for freshwater, 1.024 for salt water
+    AP_Float                            _base_pressure; // the ground_pressure for a water pressure sensor is persistent
+    AP_Int8                             _reset_base_pressure; // reset the _base_pressure for a water pressure sensor on next boot
     bool                                _hil_mode:1;
 
     // when did we last notify the GCS of new pressure reference?
