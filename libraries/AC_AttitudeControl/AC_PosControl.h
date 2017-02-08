@@ -291,7 +291,7 @@ public:
 
     static const struct AP_Param::GroupInfo var_info[];
 
-private:
+protected:
 
     // general purpose flags
     struct poscontrol_flags {
