@@ -119,10 +119,6 @@ public:
     // Set the type (Air or Water) of a particular instance
     void set_type(uint8_t instance, uint8_t type) { sensors[instance].type = type; };
 
-    // Set the precision multiplier of a particular instance
-    // Used to adjust for differences in reporting between ms58xx devices and ms5611 devices
-    void set_precision_multiplier(uint8_t instance, uint8_t multiplier) { sensors[instance].precision_multiplier = multiplier; };
-    
     // HIL variables
     struct {
         float pressure;
@@ -164,7 +160,6 @@ private:
 
     struct sensor {
         uint8_t type;                   // 0 for air pressure (default), 1 for water pressure
-        uint8_t precision_multiplier;   // multiplier to convert pressure reported by get_pressure call to Pascal units, for MS56XX air sensors, this is 1, for MS58XX water sensors, this is 10.
         uint32_t last_update_ms;        // last update time in ms
         bool healthy:1;                 // true if sensor is healthy
         bool alt_ok:1;                  // true if calculated altitude is ok

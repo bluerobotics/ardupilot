@@ -114,9 +114,6 @@ const AP_Param::GroupInfo AP_Baro::var_info[] = {
 AP_Baro::AP_Baro()
 {
     memset(sensors, 0, sizeof(sensors));
-    for(uint8_t i = 0 ; i < BARO_MAX_INSTANCES; i++) {
-    	set_precision_multiplier(i, 1);
-    }
     AP_Param::setup_object_defaults(this, var_info);
 }
 
@@ -372,10 +369,6 @@ void AP_Baro::init(void)
     case AP_BoardConfig::PX4_BOARD_PH2SLIM:
         ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
                                           std::move(hal.spi->get_device(HAL_BARO_MS5611_NAME))));
-#if APM_BUILD_TYPE(APM_BUILD_ArduSub)
-        ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
-                                          std::move(hal.i2c_mgr->get_device(HAL_BARO_MS5837_BUS, HAL_BARO_MS5837_I2C_ADDR))));
-#endif
         break;
 
     case AP_BoardConfig::PX4_BOARD_PIXHAWK2:
@@ -432,8 +425,13 @@ void AP_Baro::init(void)
 
     // can optionally have baro on I2C too
     if (_ext_bus >= 0) {
+#if APM_BUILD_TYPE(APM_BUILD_ArduSub)
+        ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
+                                          std::move(hal.i2c_mgr->get_device(_ext_bus, HAL_BARO_MS5837_I2C_ADDR)), AP_Baro_MS56XX::BARO_MS5837));
+#else
         ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
                                           std::move(hal.i2c_mgr->get_device(_ext_bus, HAL_BARO_MS5611_I2C_ADDR))));
+#endif
     }
     
     if (_num_drivers == 0 || _num_sensors == 0 || drivers[0] == nullptr) {
