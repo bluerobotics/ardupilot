@@ -92,19 +92,50 @@ const AP_Param::GroupInfo AP_Baro::var_info[] = {
     // @Description: This sets the specific gravity of the fluid when flying an underwater ROV. Set to 1.0 for freshwater or 1.024 for saltwater
     AP_GROUPINFO("SPEC_GRAV", 8, AP_Baro, _specific_gravity, 1.0),
 
-    // @Param: BASE_PRESS
-    // @DisplayName: Base Pressure (For water depth measurement)
-    // @Description: Base diving pressure. This is the ambient air pressure at launch site, and is persistent between boots.
+#if BARO_MAX_INSTANCES > 1
+    // @Param: ABS_PRESS2
+    // @DisplayName: Absolute Pressure
+    // @Description: calibrated ground pressure in Pascals
     // @Units: pascals
-    AP_GROUPINFO("BASE_PRESS", 9, AP_Baro, _base_pressure, 101325),
+    // @Increment: 1
+    // @ReadOnly: True
+    // @Volatile: True
+    // @User: Advanced
+    AP_GROUPINFO("ABS_PRESS2", 9, AP_Baro, sensors[1].ground_pressure, 0),
 
-    // @Param: BASE_RESET
-    // @DisplayName: Reset Base Pressure (For water depth measurement)
-    // @Description: Set to 1 (reset) to reset base pressure on next boot
-    // @Values: 0:Keep,1:Reset
-	// @RebootRequired: True
-    AP_GROUPINFO("BASE_RESET", 10, AP_Baro, _reset_base_pressure, 0),
-    
+    // @Param: TEMP2
+    // @DisplayName: ground temperature
+    // @Description: calibrated ground temperature in degrees Celsius
+    // @Units: degrees celsius
+    // @Increment: 1
+    // @ReadOnly: True
+    // @Volatile: True
+    // @User: Advanced
+    AP_GROUPINFO("TEMP2", 10, AP_Baro, sensors[1].ground_temperature, 0),
+#endif
+
+#if BARO_MAX_INSTANCES > 2
+    // @Param: ABS_PRESS3
+    // @DisplayName: Absolute Pressure
+    // @Description: calibrated ground pressure in Pascals
+    // @Units: pascals
+    // @Increment: 1
+    // @ReadOnly: True
+    // @Volatile: True
+    // @User: Advanced
+    AP_GROUPINFO("ABS_PRESS3", 11, AP_Baro, sensors[2].ground_pressure, 0),
+
+    // @Param: TEMP3
+    // @DisplayName: ground temperature
+    // @Description: calibrated ground temperature in degrees Celsius
+    // @Units: degrees celsius
+    // @Increment: 1
+    // @ReadOnly: True
+    // @Volatile: True
+    // @User: Advanced
+    AP_GROUPINFO("TEMP3", 12, AP_Baro, sensors[2].ground_temperature, 0),
+#endif
+
     AP_GROUPEND
 };
 
@@ -119,7 +150,7 @@ AP_Baro::AP_Baro()
 
 // calibrate the barometer. This must be called at least once before
 // the altitude() or climb_rate() interfaces can be used
-void AP_Baro::calibrate()
+void AP_Baro::calibrate(bool save)
 {
     // reset the altitude offset when we calibrate. The altitude
     // offset is supposed to be for within a flight
@@ -176,16 +207,10 @@ void AP_Baro::calibrate()
         if (count[i] == 0) {
             sensors[i].calibrated = false;
         } else {
-            if (sensors[i].type == BARO_TYPE_AIR) {
+            if (save) {
                 sensors[i].ground_pressure.set_and_save(sum_pressure[i] / count[i]);
-            } else { // for a water pressure sensor, we will only recalibrate on boot, if the BASE_RESET parameter is set
-                if (_reset_base_pressure) {
-                    _base_pressure.set_and_save(sum_pressure[i] / count[i]);
-                    _reset_base_pressure.set_and_save(0);
-                }
-                sensors[i].ground_pressure.set_and_save(_base_pressure);
+                sensors[i].ground_temperature.set_and_save(sum_temperature[i] / count[i]);
             }
-            sensors[i].ground_temperature.set_and_save(sum_temperature[i] / count[i]);
         }
     }
 
@@ -225,10 +250,6 @@ void AP_Baro::update_calibration()
             _EAS2TAS = 0;
         }
     }
-
-    // update and save base pressure (persistent between boots) with primary baro ground calibration (not persistent)
-    _base_pressure.set_and_save(get_ground_pressure());
-    _base_pressure.notify();
 }
 
 // return altitude difference in meters between current pressure and a
