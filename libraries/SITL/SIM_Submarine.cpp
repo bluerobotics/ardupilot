@@ -44,19 +44,34 @@ Submarine::Submarine(const char *home_str, const char *frame_str) :
 // calculate rotational and linear accelerations
 void Submarine::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel, Vector3f &body_accel)
 {
-   rot_accel = Vector3f(0,0,0);
-   body_accel = Vector3f(0,0,-9.8);
-   for (int i = 0; i < 6; i++) {
-      Thruster t = vectored_thrusters[i];
-      int16_t pwm = input.servos[t.servo];
-      float output = 0;
-      if (pwm < 2000 && pwm > 1000) {
+    rot_accel = Vector3f(0,0,0);
+    body_accel = Vector3f(0,0,0);
+    for (int i = 0; i < 6; i++) {
+        Thruster t = vectored_thrusters[i];
+        int16_t pwm = input.servos[t.servo];
+        float output = 0;
+        if (pwm < 2000 && pwm > 1000) {
          output = (pwm - 1500) / 400.0f; // range -1~1
-      }
+        }
 
-      body_accel += t.linear * output;
-      rot_accel += t.rotational * output;
-   }
+        body_accel += t.linear * output * 1.2 * GRAVITY_MSS;
+        rot_accel += t.rotational * output;
+    }
+
+    float terminal_rotation_rate = 10.0;
+    if (terminal_rotation_rate > 0) {
+        // rotational air resistance
+        rot_accel.x -= gyro.x * radians(400.0) / terminal_rotation_rate;
+        rot_accel.y -= gyro.y * radians(400.0) / terminal_rotation_rate;
+        rot_accel.z -= gyro.z * radians(400.0) / terminal_rotation_rate;
+    }
+
+    float terminal_velocity = 3.0;
+    if (terminal_velocity > 0) {
+        // air resistance
+        Vector3f air_resistance = -velocity_air_ef * (GRAVITY_MSS/terminal_velocity);
+        body_accel += dcm.transposed() * air_resistance;
+    }
 }
 
 /*
