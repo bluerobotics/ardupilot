@@ -350,8 +350,8 @@ _options_for_frame = {
         "default_params_filename": "default_params/rover-skid.parm",
     },
     # SUB
-    "vectored": {
-        "model": "vectored",
+    "sub": {
+    	"model": "vectored",
         "waf_target": "bin/ardusub",
         "default_params_filename": "default_params/sub.parm",
     },
@@ -379,7 +379,7 @@ _options_for_frame = {
 _default_waf_target = {
     "ArduPlane": "bin/arduplane",
     "ArduCopter": "bin/arducopter",
-    "Ardusub": "bin/ardusub",
+    "ArduSub": "bin/ardusub",
     "APMrover2": "bin/ardurover",
     "AntennaTracker": "bin/antennatracker",
 }
