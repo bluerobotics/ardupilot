@@ -51,6 +51,11 @@ public:
     uint64_t get_system_clock_ms() const;
 
     /*
+      get system clock in UTC microseconds
+     */
+    uint64_t get_system_clock_us() const;
+
+    /*
       get system time in UTC hours, minutes, seconds and milliseconds
      */
     void get_system_clock_utc(int32_t &hour, int32_t &min, int32_t &sec, int32_t &ms) const;
