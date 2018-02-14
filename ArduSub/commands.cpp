@@ -166,3 +166,20 @@ void Sub::set_system_time_from_GPS()
         Log_Write_Event(DATA_SYSTEM_TIME_SET);
     }
 }
+
+void Sub::set_system_time(const uint64_t time_unix)
+{
+    // exit immediately if system time already set
+    if (ap.system_time_set) {
+        return;
+    }
+
+    // set system clock for log timestamps
+    hal.util->set_system_clock(time_unix);
+
+    // update signing timestamp
+    GCS_MAVLINK::update_signing_timestamp(time_unix);
+
+    ap.system_time_set = false;
+    Log_Write_Event(DATA_SYSTEM_TIME_SET);
+}

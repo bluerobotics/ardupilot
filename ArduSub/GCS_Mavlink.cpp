@@ -1558,8 +1558,15 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         if ((packet.onboard_control_sensors_enabled & MAV_SENSOR_WATER) && !(packet.onboard_control_sensors_health & MAV_SENSOR_WATER)) {
             sub.leak_detector.set_detect();
         }
-    }
         break;
+    }
+
+    case MAVLINK_MSG_ID_SYSTEM_TIME: {
+        mavlink_system_time_t packet;
+        mavlink_msg_system_time_decode(msg, &packet);
+        sub.set_system_time(packet.time_unix_usec);
+        break;
+    }
 
     default:
         handle_common_message(msg);

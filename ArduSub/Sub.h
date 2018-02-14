@@ -524,6 +524,7 @@ private:
     void set_ekf_origin(const Location& loc);
     bool far_from_EKF_origin(const Location& loc);
     void set_system_time_from_GPS();
+    void set_system_time(const uint64_t time_unix);
     void exit_mission();
     bool verify_loiter_unlimited();
     bool verify_loiter_time();
