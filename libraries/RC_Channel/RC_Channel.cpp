@@ -108,6 +108,12 @@ RC_Channel::get_reverse(void) const
     return bool(reversed.get());
 }
 
+uint8_t
+RC_Channel::get_ch_in()
+{
+    return ch_in;
+}
+
 // read input from APM_RC - create a control_in value
 void
 RC_Channel::set_pwm(int16_t pwm)

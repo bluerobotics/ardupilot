@@ -83,8 +83,8 @@ public:
     void       set_control_in(int16_t val) { control_in = val;}
 
     // get control input with zero deadzone
-    int16_t     get_control_in_zero_dz(void);
-    
+    int16_t    get_control_in_zero_dz(void);
+
     int16_t    get_radio_min() const {return radio_min.get();}
     void       set_radio_min(int16_t val) { radio_min = val;}
 
@@ -99,9 +99,11 @@ public:
 
     // set and save trim if changed
     void       set_and_save_radio_trim(int16_t val) { radio_trim.set_and_save_ifchanged(val);}
-    
+
     bool min_max_configured() const;
-    
+
+    uint8_t get_ch_in();
+
 private:
 
     // pwm is stored here
@@ -159,7 +161,9 @@ public:
     static bool set_overrides(int16_t *overrides, const uint8_t len);  // set multiple overrides at once
 
     static void set_pwm_all(void);
-    
+
+    static void set_pwn_slew_rate_limit(uint16_t mask, float slew_rate, float dt);
+
 private:
     // this static arrangement is to avoid static pointers in AP_Param tables
     static RC_Channel *channels;
