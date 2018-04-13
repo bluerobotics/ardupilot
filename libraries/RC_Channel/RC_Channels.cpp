@@ -94,7 +94,7 @@ const AP_Param::GroupInfo RC_Channels::var_info[] = {
     // @Group: 16_
     // @Path: RC_Channel.cpp
     AP_SUBGROUPINFO(obj_channels[15], "16_", 16, RC_Channels, RC_Channel),
-    
+
     AP_GROUPEND
 };
 
@@ -105,7 +105,7 @@ const AP_Param::GroupInfo RC_Channels::var_info[] = {
 RC_Channels::RC_Channels(void)
 {
     channels = obj_channels;
-    
+
     // set defaults from the parameter table
     AP_Param::setup_object_defaults(this, var_info);
 
@@ -185,4 +185,31 @@ bool RC_Channels::set_overrides(int16_t *overrides, const uint8_t len)
 bool RC_Channels::receiver_bind(const int dsmMode)
 {
     return hal.rcin->rc_bind(dsmMode);
+}
+
+void RC_Channels::set_pwn_slew_rate_limit(uint16_t mask, float slew_rate, float dt)
+{
+    if (slew_rate <= 0) {
+        // nothing to do
+        return;
+    }
+
+    for (uint8_t i=0; i<NUM_RC_CHANNELS; i++) {
+        if (!(mask & 1U<<i)) {
+            channels[i].set_pwm(channels[i].read());
+            continue;
+        }
+
+        uint16_t max_change = (channels[i].get_radio_max() - channels[i].get_radio_min()) * slew_rate * dt * 0.01;
+        if (max_change == 0 || dt > 1) {
+            // always allow some change. If dt > 1 then assume we
+            // are just starting out, and only allow a small
+            // change for this loop
+            max_change = 1;
+        }
+        uint16_t in_value = channels[i].get_radio_in();
+        channels[i].set_pwm(
+            constrain_int16(channels[i].read(), in_value-max_change, in_value+max_change)
+        );
+    }
 }

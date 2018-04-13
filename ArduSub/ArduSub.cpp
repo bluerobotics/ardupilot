@@ -158,7 +158,13 @@ void Sub::fifty_hz_loop()
     failsafe_sensors_check();
 
     // Update rc input/output
-    RC_Channels::set_pwm_all();
+    static uint16_t joystick_mask = (1U<<channel_roll->get_ch_in()) \
+        + (1U<<channel_pitch->get_ch_in()) + (1U<<channel_throttle->get_ch_in()) + (1U<<channel_yaw->get_ch_in());
+    if (control_mode != MANUAL) {
+        RC_Channels::set_pwm_all();
+    } else {
+        RC_Channels::set_pwn_slew_rate_limit(joystick_mask, g.rc_slew_rate, 1/50.0);
+    }
     SRV_Channels::output_ch_all();
 }
 
