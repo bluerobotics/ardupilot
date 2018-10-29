@@ -360,7 +360,7 @@ const AP_Param::Info Sub::var_info[] = {
     // @Range: 50 490
     // @Increment: 1
     // @User: Advanced
-    GSCALAR(rc_speed, "RC_SPEED",              RC_SPEED_DEFAULT),
+    GSCALAR(rc_speed, "RC_SPEED",              50),
 
     // @Param: ACRO_RP_P
     // @DisplayName: Acro Roll and Pitch P gain

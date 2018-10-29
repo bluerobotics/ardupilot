@@ -110,7 +110,7 @@ void Sub::fast_loop()
     }
 
     // send outputs to the motors library
-    motors_output();
+    //motors_output();
 
     // run EKF state estimator (expensive)
     // --------------------
@@ -134,7 +134,7 @@ void Sub::fast_loop()
 
 #if MOUNT == ENABLED
     // camera mount's fast update
-    camera_mount.update_fast();
+    //camera_mount.update_fast();
 #endif
 
     // log sensor health
@@ -146,19 +146,35 @@ void Sub::fast_loop()
 // 50 Hz tasks
 void Sub::fifty_hz_loop()
 {
-    // check pilot input failsafe
-    failsafe_pilot_input_check();
+    static uint16_t pwm_signal = 1100;
+    static int8_t inc = 20;
+    for (uint8_t i = 0; i < 14; i++) {
+            hal.rcout->enable_ch(i);
 
-    failsafe_crash_check();
+        hal.rcout->write(i, pwm_signal);
+    }
+    if (pwm_signal > 1900) {
+        inc = -20;
+    } else if (pwm_signal < 1100) {
+        inc = 20;
+    }
+    pwm_signal += inc;
+    //while (1);
+    // // check pilot input failsafe
+    // failsafe_pilot_input_check();
 
-    failsafe_ekf_check();
+    // failsafe_crash_check();
 
-    failsafe_sensors_check();
+    // failsafe_ekf_check();
+
+    // failsafe_sensors_check();
+
 
     // Update rc input/output
-    rc().read_input();
-    SRV_Channels::output_ch_all();
+    // rc().read_input();
+    // SRV_Channels::output_ch_all();
 }
+
 
 // update_batt_compass - read battery and compass
 // should be called at 10hz
@@ -233,7 +249,7 @@ void Sub::twentyfive_hz_logging()
 // three_hz_loop - 3.3hz loop
 void Sub::three_hz_loop()
 {
-    leak_detector.update();
+    //leak_detector.update();
 
     failsafe_leak_check();
 
@@ -252,7 +268,7 @@ void Sub::three_hz_loop()
     fence_check();
 #endif // AC_FENCE_ENABLED
 
-    ServoRelayEvents.update_events();
+    //ServoRelayEvents.update_events();
 }
 
 // one_hz_loop - runs at 1Hz
@@ -273,11 +289,11 @@ void Sub::one_hz_loop()
         ahrs.update_orientation();
 
         // set all throttle channel settings
-        motors.set_throttle_range(channel_throttle->get_radio_min(), channel_throttle->get_radio_max());
+        //motors.set_throttle_range(channel_throttle->get_radio_min(), channel_throttle->get_radio_max());
     }
 
     // update assigned functions and enable auxiliary servos
-    SRV_Channels::enable_aux_servos();
+    //SRV_Channels::enable_aux_servos();
 
     // update position controller alt limits
     update_poscon_alt_max();
