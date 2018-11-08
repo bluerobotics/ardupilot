@@ -144,7 +144,7 @@ void Sub::fast_loop()
 void Sub::fifty_hz_loop()
 {
     static uint16_t pwm_signal = 1100;
-    static int8_t inc = 20;
+    static int8_t inc = 4;
     for (uint8_t i = 0; i < 14; i++) {
             hal.rcout->enable_ch(i);
 
