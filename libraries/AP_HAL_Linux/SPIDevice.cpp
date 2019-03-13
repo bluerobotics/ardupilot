@@ -129,6 +129,8 @@ SPIDesc SPIDeviceManager::_device[] = {
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PATRICK
 SPIDesc SPIDeviceManager::_device[] = {
     SPIDesc("bmp280", 1, 2, SPI_MODE_0, 8, SPI_CS_KERNEL,  1*MHZ,10*MHZ),
+    SPIDesc("lsm9ds1_m", 1, 1, SPI_MODE_0, 8, SPI_CS_KERNEL,  1*MHZ, 10*MHZ),
+    SPIDesc("lsm9ds1", 1, 0, SPI_MODE_0, 8, SPI_CS_KERNEL,  1*MHZ, 10*MHZ),
 };
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_EDGE
 SPIDesc SPIDeviceManager::_device[] = {
