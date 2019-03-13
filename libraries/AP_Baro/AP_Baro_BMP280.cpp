@@ -33,7 +33,8 @@ extern const AP_HAL::HAL &hal;
 
 #define BMP280_FILTER_COEFFICIENT 2
 
-#define BMP280_ID            0x58
+//TODO: create class for BME280
+#define BMP280_ID            0x60
 
 #define BMP280_REG_CALIB     0x88
 #define BMP280_REG_ID        0xD0
