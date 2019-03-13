@@ -593,11 +593,15 @@ void AP_Baro::init(void)
     // can optionally have baro on I2C too
     if (_ext_bus >= 0) {
 #if APM_BUILD_TYPE(APM_BUILD_ArduSub)
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PATRICK
+
+#else
         ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
                                           std::move(hal.i2c_mgr->get_device(_ext_bus, HAL_BARO_MS5837_I2C_ADDR)), AP_Baro_MS56XX::BARO_MS5837));
 
         ADD_BACKEND(AP_Baro_KellerLD::probe(*this,
                                           std::move(hal.i2c_mgr->get_device(_ext_bus, HAL_BARO_KELLERLD_I2C_ADDR))));
+#endif
 #else
         ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
                                           std::move(hal.i2c_mgr->get_device(_ext_bus, HAL_BARO_MS5611_I2C_ADDR))));
