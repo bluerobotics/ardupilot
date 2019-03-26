@@ -17,37 +17,25 @@ public:
 
     void set_target_position(Vector3f target) { target_position = target; }
     void set_target_velocity(Vector3f target) { target_velocity = target; }
-    void set_target_acceleration(Vector3f target) { target_acceleration = target; }
 
     Vector3f get_target_position() { return target_position; }
     Vector3f get_target_velocity() { return target_velocity; }
-    Vector3f get_target_acceleration() { return target_acceleration; }
 
     Vector3f get_error_position() { return target_position - get_current_position(); }
     Vector3f get_error_velocity() { return target_velocity - get_current_velocity(); }
-    Vector3f get_error_acceleration() { return target_acceleration - get_current_acceleration(); }
+    float get_velocity_ff(float desired_rate) { return pid_velocity_z.get_ff(desired_rate); }
 
+    // Return 3D posiiton, altitude in meters
     Vector3f get_current_position() { return Vector3f { 0, 0, inertial_nav_.get_altitude()/100 }; }
-    //return ahrs_.get_relative_position_NED_origin();
+    // Return 3D velocity, vertical in meters per second
     Vector3f get_current_velocity() { return inertial_nav_.get_velocity()/100;};
-    Vector3f get_current_acceleration() { return Vector3f {0, 0, 0};};//-(inertial_nav_.get_accel_ef_blended().z + GRAVITY_MSS)}; }
 
     void update()
     {
-        if (fabs(target_velocity.z) < 0.01) {
-            if(!_hold_pos) {
-                set_target_position(get_current_position());
-                _hold_pos = true;
-            }
-        } else {
-            _hold_pos = false;
-        }
-        if (_hold_pos) {
-                update_position_controller();
-        }
+        update_position_controller();
         update_velocity_controller();
         //update_acceleration_controller();
-        //printf("target_pos: %f, current_pos: %f, pos_error: %f, target_speed: %f, current speed: %f, command.z: %f\n", target_position  .z, get_current_position().z, get_error_position().z , target_velocity.z, get_current_velocity().z, output_command.z);
+        printf("target_pos: %f, current_pos: %f, pos_error: %f, target_speed: %f, current speed: %f, command.z: %f\n", target_position  .z, get_current_position().z, get_error_position().z , target_velocity.z, get_current_velocity().z, output_command.z);
 
     }
 
@@ -59,20 +47,16 @@ public:
 private:
     AC_PID pid_position_x { 1.0f, 0, 0, 100.0f, 100.0f, 0.01f };
     AC_PID pid_velocity_x { 1.0f, 0, 0, 100.0f, 100.0f, 0.01f };
-    AC_PID pid_acceleration_x { 1.0f, 0, 0, 100.0f, 100.0f, 0.01f };
 
     AC_PID pid_position_y { 1.0f, 0, 0, 100.0f, 100.0f, 0.01f };
     AC_PID pid_velocity_y { 1.0f, 0, 0, 100.0f, 100.0f, 0.01f };
-    AC_PID pid_acceleration_y { 1.0f, 0, 0, 100.0f, 100.0f, 0.01f };
 
     AC_PID pid_position_z { 1.0f, 0.0f, 0.0f, 1.0f, 100.0f, 0.01f };
     AC_PID pid_velocity_z { 25.0f, 50.0f, 0.0f, 600.0f, 100.0f, 0.01f };
-    AC_PID pid_acceleration_z { 1.2f, 0.0f, 0.0f, 1.0f, 100.0f, 0.01f };
 
     // meters!
     Vector3f target_position = { 0, 0, 0 };
     Vector3f target_velocity = { 0, 0, 0 };
-    Vector3f target_acceleration = { 0, 0, 0 };
     Vector3f output_command = { 0, 0, 0 };
 
     const AP_InertialNav_NavEKF& inertial_nav_;
@@ -81,24 +65,12 @@ private:
     void update_position_controller()
     {
         pid_position_z.set_input_filter_all(-get_error_position().z);
-        //printf("error_position: %f\n", get_error_position().z);
         target_velocity.z = -pid_position_z.get_pid();
     }
 
     void update_velocity_controller()
     {
         pid_velocity_z.set_input_filter_all(get_error_velocity().z);
-        target_acceleration.z = pid_velocity_z.get_pid();
-        output_command.z = target_acceleration.z;
-    }
-
-    void update_acceleration_controller()
-    {
-        pid_acceleration_z.set_input_filter_all(get_error_acceleration().z);
-        //output_command.z = pid_velocity_z.get_pid();
-
-        output_command.x = constrain_float(output_command.x, -1.0f, 1.0f);
-        output_command.y = constrain_float(output_command.y, -1.0f, 1.0f);
-        output_command.z = constrain_float(output_command.z, -1.0f, 1.0f);
+        output_command.z = pid_velocity_z.get_pid();
     }
 };

@@ -8,8 +8,5 @@ const AP_Param::GroupInfo AS_PositionControl::var_info[] = {
     AP_SUBGROUPINFO(pid_velocity_x, "VEL_X_", 3, AS_PositionControl, AC_PID),
     AP_SUBGROUPINFO(pid_velocity_y, "VEL_Y_", 4, AS_PositionControl, AC_PID),
     AP_SUBGROUPINFO(pid_velocity_z, "VEL_Z_", 5, AS_PositionControl, AC_PID),
-    AP_SUBGROUPINFO(pid_acceleration_x, "ACC_X_", 6, AS_PositionControl, AC_PID),
-    AP_SUBGROUPINFO(pid_acceleration_y, "ACC_Y_", 7, AS_PositionControl, AC_PID),
-    AP_SUBGROUPINFO(pid_acceleration_z, "ACC_Z_", 8, AS_PositionControl, AC_PID),
     AP_GROUPEND
 };
