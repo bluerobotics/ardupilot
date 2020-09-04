@@ -144,6 +144,21 @@ class AutoTestSub(AutoTest):
         self.delay_sim_time(1)
 
         self.watch_altitude_maintained()
+        # Handle buoyancy changes
+        self.set_parameter("SIM_BUOYANCY", 10)
+        self.watch_altitude_maintained()
+        self.set_parameter("SIM_BUOYANCY", -10)
+        self.watch_altitude_maintained()
+
+        # Handle small inputs with larger buoyancy
+        self.set_parameter("SIM_BUOYANCY", 10)
+        # Make sure that the ROV will dive with a small input down even if there is a 10N buoyancy force upwards
+        self.set_rc(Joystick.Throttle, 1450)
+        self.wait_altitude(altitude_min=-6, altitude_max=-5.5)
+
+        self.set_rc(Joystick.Throttle, 1500)
+        self.set_parameter("SIM_BUOYANCY", -10)
+        self.watch_altitude_maintained()
 
         self.disarm_vehicle()
 
